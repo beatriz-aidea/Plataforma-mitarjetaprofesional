@@ -1,0 +1,19 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-brand-50: #fdf2f6;
+  --color-brand-100: #fbe5ee;
+  --color-brand-200: #f7cce0;
+  --color-brand-300: #f2a6c9;
+  --color-brand-400: #ec73a8;
+  --color-brand-500: #d60b52;
+  --color-brand-600: #c10745;
+  --color-brand-700: #a30437;
+  --color-brand-800: #880631;
+  --color-brand-900: #71082b;
+  --color-brand-950: #450216;
+}

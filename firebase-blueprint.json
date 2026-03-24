@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the platform",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["free", "subscription", "enterprise", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Card": {
+      "title": "Professional Card",
+      "description": "A digital professional card",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "companyId": { "type": "string" },
+        "identity": {
+          "type": "object",
+          "properties": {
+            "photoUrl": { "type": "string" },
+            "firstName": { "type": "string" },
+            "lastName": { "type": "string" },
+            "company": { "type": "string" },
+            "role": { "type": "string" }
+          },
+          "required": ["firstName", "lastName"]
+        },
+        "contact": {
+          "type": "object",
+          "properties": {
+            "mobile": { "type": "string" },
+            "landline": { "type": "string" },
+            "email": { "type": "string" },
+            "website": { "type": "string" }
+          }
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "notes": { "type": "string" }
+          }
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": { "type": "string" },
+            "zip": { "type": "string" },
+            "city": { "type": "string" },
+            "province": { "type": "string" },
+            "country": { "type": "string" }
+          }
+        },
+        "social": {
+          "type": "object",
+          "properties": {
+            "linkedin": { "type": "string" },
+            "instagram": { "type": "string" },
+            "twitter": { "type": "string" },
+            "tiktok": { "type": "string" }
+          }
+        },
+        "customUrls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "url": { "type": "string" }
+            },
+            "required": ["title", "url"]
+          }
+        },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "ownerUid", "identity", "status", "createdAt", "updatedAt"]
+    },
+    "Order": {
+      "title": "Physical Card Order",
+      "description": "An order for a physical professional card",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "cardId": { "type": "string" },
+        "design": { "type": "string" },
+        "logoUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "paid", "shipped"] },
+        "shippingAddress": {
+          "type": "object",
+          "properties": {
+            "fullName": { "type": "string" },
+            "street": { "type": "string" },
+            "city": { "type": "string" },
+            "zip": { "type": "string" },
+            "country": { "type": "string" }
+          },
+          "required": ["fullName", "street", "city", "zip", "country"]
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "cardId", "design", "status", "shippingAddress", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles"
+    },
+    "/cards/{cardId}": {
+      "schema": { "$ref": "#/entities/Card" },
+      "description": "Professional cards"
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Physical card orders"
+    }
+  }
+}

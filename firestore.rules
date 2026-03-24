@@ -1,0 +1,120 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerUid;
+    }
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid || isAdmin();
+    }
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid || isAdmin();
+    }
+    function ownerUidUnchanged() {
+      return !('ownerUid' in request.resource.data) || request.resource.data.ownerUid == request.auth.uid || isAdmin();
+    }
+    function ownerUidNotModified() {
+      return !('ownerUid' in request.resource.data) || request.resource.data.ownerUid == resource.data.ownerUid || isAdmin();
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    function isAdmin() {
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "beatriz@aidea.es" && request.auth.token.email_verified == true));
+    }
+    
+    // Domain Validators
+    function isValidUser() {
+      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'companyId']) &&
+             request.resource.data.uid is string &&
+             request.resource.data.email is string &&
+             request.resource.data.role in ['free', 'subscription', 'enterprise', 'admin'] &&
+             request.resource.data.createdAt is timestamp;
+    }
+
+    function isValidCard() {
+      return hasRequiredFields(['id', 'ownerUid', 'identity', 'status', 'createdAt', 'updatedAt']) &&
+             request.resource.data.id is string &&
+             request.resource.data.ownerUid is string &&
+             request.resource.data.status in ['active', 'inactive'] &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.updatedAt is timestamp &&
+             request.resource.data.identity is map &&
+             request.resource.data.identity.keys().hasAll(['firstName', 'lastName']);
+    }
+
+    function isValidOrder() {
+      return hasRequiredFields(['id', 'userId', 'cardId', 'design', 'status', 'shippingAddress', 'createdAt']) &&
+             request.resource.data.id is string &&
+             request.resource.data.userId is string &&
+             request.resource.data.cardId is string &&
+             request.resource.data.design is string &&
+             request.resource.data.status in ['pending', 'confirmed', 'paid', 'shipped'] &&
+             request.resource.data.createdAt is timestamp &&
+             request.resource.data.shippingAddress is map &&
+             request.resource.data.shippingAddress.keys().hasAll(['fullName', 'street', 'city', 'zip', 'country']);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && 
+                    (isOwner(userId) || isAdmin()) && 
+                    isValidUser() && 
+                    uidUnchanged() && 
+                    (request.resource.data.role == 'free' || isAdmin()); // Default to free unless admin
+      allow update: if isAuthenticated() && 
+                    (isOwner(userId) || isAdmin()) && 
+                    isValidUser() && 
+                    uidNotModified() && 
+                    (request.resource.data.role == resource.data.role || isAdmin()); // Can't change own role
+      allow delete: if isAdmin();
+    }
+
+    match /cards/{cardId} {
+      // Anyone can read an active card (for public sharing)
+      allow read: if resource.data.status == 'active' || isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && 
+                    (request.resource.data.ownerUid == request.auth.uid || isAdmin()) && 
+                    isValidCard() && 
+                    ownerUidUnchanged();
+      allow update: if isAuthenticated() && 
+                    (isDocOwner() || isAdmin()) && 
+                    isValidCard() && 
+                    ownerUidNotModified() &&
+                    request.resource.data.createdAt == resource.data.createdAt; // Immutable createdAt
+      allow delete: if isDocOwner() || isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isAdmin());
+      allow create: if isAuthenticated() && 
+                    request.resource.data.userId == request.auth.uid && 
+                    isValidOrder();
+      allow update: if isAuthenticated() && 
+                    request.auth.uid == resource.data.userId && 
+                    isValidOrder() &&
+                    request.resource.data.userId == resource.data.userId &&
+                    request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
+    }
+  }
+}

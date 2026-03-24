@@ -1,0 +1,5 @@
+{
+  "name": "Mi Tarjeta Profesional",
+  "description": "Plataforma digital para crear, gestionar y compartir tarjetas de visita profesionales (vCards) mediante QR, NFC y enlaces.",
+  "requestFramePermissions": []
+}
