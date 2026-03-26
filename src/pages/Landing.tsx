@@ -4,18 +4,21 @@ import { useAuth } from '../context/AuthContext';
 import { QrCode, Smartphone, Building2, CheckCircle2, X, Mail } from 'lucide-react';
 
 export default function Landing() {
-  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
   const navigate = useNavigate();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [authSuccess, setAuthSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = async () => {
     try {
       setAuthError('');
+      setAuthSuccess('');
       await signInWithGoogle();
       navigate('/dashboard');
     } catch (error: any) {
@@ -30,9 +33,34 @@ export default function Landing() {
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthSuccess('');
+    if (!email) {
+      setAuthError('Por favor, introduce tu correo electrónico.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword(email);
+      setAuthSuccess('Te hemos enviado un correo. Por favor, revisa también tu carpeta de Spam o Correo no deseado.');
+    } catch (error: any) {
+      console.error("Password reset failed", error);
+      if (error.code === 'auth/user-not-found') {
+        setAuthError('No hay ninguna cuenta registrada con este correo.');
+      } else {
+        setAuthError(`Error: ${error.message || error.code}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    setAuthSuccess('');
     setLoading(true);
     try {
       if (isLogin) {
@@ -63,6 +91,9 @@ export default function Landing() {
     if (user) {
       navigate('/dashboard');
     } else {
+      setIsResetPassword(false);
+      setAuthError('');
+      setAuthSuccess('');
       setShowAuthModal(true);
     }
   };
@@ -71,9 +102,9 @@ export default function Landing() {
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logoQr.svg" alt="Logo" className="w-8 h-8" />
-            <span className="font-bold text-xl tracking-tight">Mi Tarjeta Profesional</span>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
+            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
           </div>
           <button
             onClick={openAuthModal}
@@ -89,31 +120,35 @@ export default function Landing() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 relative shadow-xl">
             <button 
-              onClick={() => setShowAuthModal(false)}
+              onClick={() => { setShowAuthModal(false); setIsResetPassword(false); setAuthError(''); setAuthSuccess(''); }}
               className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"
             >
               <X className="w-6 h-6" />
             </button>
             
             <h2 className="text-2xl font-bold text-center mb-6">
-              {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
+              {isResetPassword ? 'Recuperar Contraseña' : (isLogin ? 'Iniciar Sesión' : 'Crear Cuenta')}
             </h2>
 
-            <button
-              onClick={handleGoogleLogin}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors font-medium mb-6"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-              Continuar con Google
-            </button>
+            {!isResetPassword && (
+              <>
+                <button
+                  onClick={handleGoogleLogin}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors font-medium mb-6"
+                >
+                  <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+                  Continuar con Google
+                </button>
 
-            <div className="relative flex items-center py-2 mb-6">
-              <div className="flex-grow border-t border-zinc-200"></div>
-              <span className="flex-shrink-0 mx-4 text-zinc-400 text-sm">o con tu correo</span>
-              <div className="flex-grow border-t border-zinc-200"></div>
-            </div>
+                <div className="relative flex items-center py-2 mb-6">
+                  <div className="flex-grow border-t border-zinc-200"></div>
+                  <span className="flex-shrink-0 mx-4 text-zinc-400 text-sm">o con tu correo</span>
+                  <div className="flex-grow border-t border-zinc-200"></div>
+                </div>
+              </>
+            )}
 
-            <form onSubmit={handleEmailAuth} className="space-y-4">
+            <form onSubmit={isResetPassword ? handleResetPassword : handleEmailAuth} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 mb-1">Correo electrónico</label>
                 <input
@@ -125,20 +160,37 @@ export default function Landing() {
                   placeholder="tu@email.com"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Contraseña</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
-                  placeholder="••••••••"
-                />
-              </div>
+              
+              {!isResetPassword && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Contraseña</label>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                    placeholder="••••••••"
+                  />
+                  {isLogin && (
+                    <div className="mt-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => { setIsResetPassword(true); setAuthError(''); setAuthSuccess(''); }}
+                        className="text-sm text-brand-600 hover:underline"
+                      >
+                        ¿Olvidaste tu contraseña?
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {authError && (
                 <p className="text-red-500 text-sm">{authError}</p>
+              )}
+              {authSuccess && (
+                <p className="text-emerald-600 text-sm">{authSuccess}</p>
               )}
 
               <button
@@ -146,18 +198,29 @@ export default function Landing() {
                 disabled={loading}
                 className="w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
               >
-                {loading ? 'Cargando...' : (isLogin ? 'Entrar' : 'Registrarse')}
+                {loading ? 'Cargando...' : (isResetPassword ? 'Enviar enlace de recuperación' : (isLogin ? 'Entrar' : 'Registrarse'))}
               </button>
             </form>
 
             <div className="mt-6 text-center text-sm text-zinc-600">
-              {isLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
-              <button 
-                onClick={() => { setIsLogin(!isLogin); setAuthError(''); }}
-                className="text-brand-600 font-medium hover:underline"
-              >
-                {isLogin ? 'Regístrate aquí' : 'Inicia sesión'}
-              </button>
+              {isResetPassword ? (
+                <button 
+                  onClick={() => { setIsResetPassword(false); setAuthError(''); setAuthSuccess(''); }}
+                  className="text-brand-600 font-medium hover:underline"
+                >
+                  Volver a iniciar sesión
+                </button>
+              ) : (
+                <>
+                  {isLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+                  <button 
+                    onClick={() => { setIsLogin(!isLogin); setAuthError(''); setAuthSuccess(''); }}
+                    className="text-brand-600 font-medium hover:underline"
+                  >
+                    {isLogin ? 'Regístrate aquí' : 'Inicia sesión'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -179,7 +242,7 @@ export default function Landing() {
               onClick={openAuthModal}
               className="px-8 py-4 bg-brand-600 text-white text-lg font-semibold rounded-xl hover:bg-brand-700 transition-colors w-full sm:w-auto"
             >
-              Crear mi tarjeta gratis
+              {user ? 'Ver mi tarjeta' : 'Crear mi tarjeta gratis'}
             </button>
             <a
               href="#planes"
@@ -246,14 +309,13 @@ export default function Landing() {
               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-500 text-white px-4 py-1 rounded-full text-sm font-medium">
                 Más popular
               </div>
-              <h3 className="text-xl font-semibold mb-2 text-white">Suscripción</h3>
+              <h3 className="text-xl font-semibold mb-2 text-white">Usuario Premium</h3>
               <div className="text-4xl font-bold mb-6 text-white">1,50€<span className="text-lg text-zinc-400 font-normal">/mes</span></div>
               <p className="text-zinc-400 text-sm mb-6">Facturado anualmente (18€/año)</p>
               <ul className="space-y-4 mb-8 flex-1">
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Todo lo del plan gratuito</span></li>
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Landing page personalizada</span></li>
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Modificación de datos ilimitada</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Añadir a Apple/Google Wallet</span></li>
               </ul>
               <button onClick={openAuthModal} className="w-full py-3 rounded-xl font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors">
                 Suscribirse
@@ -281,7 +343,7 @@ export default function Landing() {
 
       <footer className="bg-white border-t border-zinc-200 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-zinc-500">
-          <p>© {new Date().getFullYear()} Mi Tarjeta Profesional. Todos los derechos reservados.</p>
+          <p>© {new Date().getFullYear()} AIDEA VCARD. Todos los derechos reservados.</p>
         </div>
       </footer>
     </div>

@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { db, storage } from '../firebase';
+import { db } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp, query, collection, where, getDocs } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { ArrowLeft, Save, Upload } from 'lucide-react';
 
 export default function EditCard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { cardId } = useParams();
+  const [searchParams] = useSearchParams();
+  const targetOwnerUid = searchParams.get('ownerUid');
+  
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [originalOwnerUid, setOriginalOwnerUid] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [formData, setFormData] = useState({
     identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '' },
@@ -21,15 +24,38 @@ export default function EditCard() {
     context: { notes: '' },
     address: { street: '', zip: '', city: '', province: '', country: '' },
     social: { linkedin: '', instagram: '', twitter: '', tiktok: '' },
+    settings: { qrLogo: false, qrLogoUrl: '' },
     status: 'active'
   });
 
-  useEffect(() => {
+ useEffect(() => {
     const fetchCard = async () => {
+      if (!user) {
+        setInitialLoading(false);
+        return;
+      }
+
+      // Check if current user is admin
+      let isUserAdmin = false;
+      if (user?.email === 'beatriz@aidea.es') {
+        isUserAdmin = true;
+      } else {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && userDoc.data().role === 'admin') {
+            isUserAdmin = true;
+          }
+        } catch (e) {
+          console.error("Error checking admin status", e);
+        }
+      }
+      setIsAdmin(isUserAdmin);
+
       if (!cardId) {
         setInitialLoading(false);
         return;
       }
+
       try {
         const docRef = doc(db, 'cards', cardId);
         const docSnap = await getDoc(docRef);
@@ -37,27 +63,42 @@ export default function EditCard() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Check if current user is owner or admin
-          let isAdmin = false;
-          if (user?.email === 'beatriz@aidea.es') {
-            isAdmin = true;
-          } else if (user) {
-            const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', user.uid)));
-            if (!userDoc.empty && userDoc.docs[0].data().role === 'admin') {
-              isAdmin = true;
-            }
-          }
-
-          if (data.ownerUid === user?.uid || isAdmin) {
+          if (data.ownerUid === user?.uid || isUserAdmin) {
             setOriginalOwnerUid(data.ownerUid);
             setFormData({
-              identity: { ...formData.identity, ...data.identity },
-              contact: { ...formData.contact, ...data.contact },
-              context: { ...formData.context, ...data.context },
-              address: { ...formData.address, ...data.address },
-              social: { ...formData.social, ...data.social },
-              status: data.status || 'active'
-            });
+  identity: {
+    firstName: data.identity?.firstName || '',
+    lastName: data.identity?.lastName || '',
+    company: data.identity?.company || '',
+    role: data.identity?.role || '',
+    photoUrl: data.identity?.photoUrl || ''
+  },
+  contact: {
+    mobile: data.contact?.mobile || '',
+    landline: data.contact?.landline || '',
+    email: data.contact?.email || '',
+    website: data.contact?.website || ''
+  },
+  context: { notes: data.context?.notes || '' },
+  address: {
+    street: data.address?.street || '',
+    zip: data.address?.zip || '',
+    city: data.address?.city || '',
+    province: data.address?.province || '',
+    country: data.address?.country || ''
+  },
+  social: {
+    linkedin: data.social?.linkedin || '',
+    instagram: data.social?.instagram || '',
+    twitter: data.social?.twitter || '',
+    tiktok: data.social?.tiktok || ''
+  },
+  settings: {
+    qrLogo: data.settings?.qrLogo || false,
+    qrLogoUrl: data.settings?.qrLogoUrl || ''
+  },
+  status: data.status || 'active'
+});
           } else {
             navigate('/dashboard');
           }
@@ -83,23 +124,60 @@ export default function EditCard() {
     }));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (section: string, field: string) => async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
     setUploadingImage(true);
     try {
-      const id = cardId || crypto.randomUUID();
-      const storageRef = ref(storage, `cards/${id}/${file.name}`);
-      await uploadBytes(storageRef, file);
-      const downloadUrl = await getDownloadURL(storageRef);
-      
-      handleChange('identity', 'photoUrl', downloadUrl);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 400;
+          const MAX_HEIGHT = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_WIDTH) {
+              height *= MAX_WIDTH / width;
+              width = MAX_WIDTH;
+            }
+          } else {
+            if (height > MAX_HEIGHT) {
+              width *= MAX_HEIGHT / height;
+              height = MAX_HEIGHT;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG with 0.8 quality to keep it well under Firestore's 1MB limit
+          const base64String = canvas.toDataURL('image/jpeg', 0.8);
+          handleChange(section, field, base64String);
+          setUploadingImage(false);
+        };
+        img.onerror = () => {
+          setUploadingImage(false);
+          alert("Error al procesar la imagen.");
+        };
+      };
+      reader.onerror = (error) => {
+        console.error("Error reading file:", error);
+        setUploadingImage(false);
+        alert("Error al leer la imagen.");
+      };
     } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Error al subir la imagen. Asegúrate de que el archivo no sea muy grande.");
-    } finally {
+      console.error("Error processing image:", error);
       setUploadingImage(false);
+      alert("Error al procesar la imagen.");
     }
   };
 
@@ -114,7 +192,7 @@ export default function EditCard() {
       
       const payload = {
         id,
-        ownerUid: originalOwnerUid || user.uid,
+        ownerUid: originalOwnerUid || (isAdmin && targetOwnerUid ? targetOwnerUid : user.uid),
         ...formData,
         updatedAt: serverTimestamp()
       };
@@ -194,7 +272,7 @@ export default function EditCard() {
                         type="file" 
                         accept="image/*" 
                         className="hidden" 
-                        onChange={handleImageUpload}
+                        onChange={handleImageUpload('identity', 'photoUrl')}
                         disabled={uploadingImage}
                       />
                     </label>
@@ -283,6 +361,51 @@ export default function EditCard() {
                 <label className="block text-sm font-medium text-zinc-700 mb-1">TikTok</label>
                 <input type="url" value={formData.social.tiktok} onChange={e => handleChange('social', 'tiktok', e.target.value)} placeholder="https://tiktok.com/@..." className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
               </div>
+            </div>
+          </section>
+
+          {/* Settings */}
+          <section className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-zinc-900">Configuración del QR</h2>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  id="qrLogo"
+                  checked={formData.settings.qrLogo} 
+                  onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, qrLogo: e.target.checked } }))} 
+                  className="w-5 h-5 text-brand-600 rounded border-zinc-300 focus:ring-brand-500"
+                />
+                <label htmlFor="qrLogo" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                  Integrar un logo en el código QR
+                </label>
+              </div>
+              
+              {formData.settings.qrLogo && (
+                <div className="pl-8">
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Logo para el QR</label>
+                  <div className="flex items-center gap-4">
+                    {formData.settings.qrLogoUrl && (
+                      <img src={formData.settings.qrLogoUrl} alt="QR Logo Preview" className="w-12 h-12 object-contain border border-zinc-200 bg-white rounded-lg p-1" />
+                    )}
+                    <div className="flex-1">
+                      <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-xl hover:border-brand-500 hover:bg-brand-50 transition-colors cursor-pointer">
+                        <Upload className="w-5 h-5 text-zinc-500" />
+                        <span className="text-sm font-medium text-zinc-700">
+                          {uploadingImage ? 'Subiendo...' : 'Subir logo (JPG, PNG)'}
+                        </span>
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={handleImageUpload('settings', 'qrLogoUrl')}
+                          disabled={uploadingImage}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
           

@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { QRCodeSVG } from 'qrcode.react';
-import { Plus, Edit2, Trash2, ExternalLink, LogOut, ShieldAlert, Building2 } from 'lucide-react';
+import { Plus, Edit2, Trash2, ExternalLink, LogOut, ShieldAlert, Building2, Wallet } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
@@ -13,6 +14,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEnterprise, setIsEnterprise] = useState(false);
+  const [isSubscription, setIsSubscription] = useState(false);
+  
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -24,11 +29,12 @@ export default function Dashboard() {
       }
       
       try {
-        const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', user.uid)));
-        if (!userDoc.empty) {
-          const role = userDoc.docs[0].data().role;
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (userDoc.exists()) {
+          const role = userDoc.data().role;
           if (role === 'admin') setIsAdmin(true);
           if (role === 'enterprise') setIsEnterprise(true);
+          if (role === 'subscription') setIsSubscription(true);
         }
       } catch (e) {
         console.error(e);
@@ -52,15 +58,22 @@ export default function Dashboard() {
     fetchCards();
   }, [user]);
 
-  const handleDelete = async (cardId: string) => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar esta tarjeta?')) {
-      try {
-        await deleteDoc(doc(db, 'cards', cardId));
-        setCards(cards.filter(c => c.id !== cardId));
-      } catch (error) {
-        console.error("Error deleting card:", error);
-        alert("Error al eliminar la tarjeta");
-      }
+  const confirmDelete = (cardId: string) => {
+    setCardToDelete(cardId);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!cardToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'cards', cardToDelete));
+      setCards(cards.filter(c => c.id !== cardToDelete));
+    } catch (error) {
+      console.error("Error deleting card:", error);
+      alert("Error al eliminar la tarjeta");
+    } finally {
+      setDeleteModalOpen(false);
+      setCardToDelete(null);
     }
   };
 
@@ -69,13 +82,18 @@ export default function Dashboard() {
     navigate('/');
   };
 
+  const handleAddToWallet = () => {
+    alert('Funcionalidad de Wallet en desarrollo. Próximamente podrás descargar tu pase para Apple Wallet y Google Wallet.');
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 font-sans">
       <header className="bg-white border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img src="/logoQr.svg" alt="Logo" className="w-8 h-8" />
-            <h1 className="font-bold text-xl text-zinc-900 hidden sm:block">Panel de Control</h1>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
+            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
+            <h1 className="font-bold text-xl text-zinc-900 hidden sm:block ml-2">Panel de Control</h1>
           </div>
           <div className="flex items-center gap-4">
             {isEnterprise && (
@@ -145,7 +163,7 @@ export default function Dashboard() {
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cards.map((card) => {
-              const cardUrl = `https://mitarjetaprofesional.com/c/${card.id}`;
+              const cardUrl = `${window.location.origin}/c/${card.id}`;
               return (
                 <div key={card.id} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col">
                   <div className="p-6 flex-1">
@@ -160,7 +178,17 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="flex justify-center py-6 bg-zinc-50 rounded-xl mb-4">
-                      <QRCodeSVG value={cardUrl} size={120} level="H" includeMargin={true} />
+                      <QRCodeSVG 
+                        value={cardUrl} 
+                        size={120} 
+                        level="H" 
+                        includeMargin={true} 
+                        imageSettings={
+                          card.settings?.qrLogo && card.settings?.qrLogoUrl 
+                            ? { src: card.settings.qrLogoUrl, height: 24, width: 24, excavate: true } 
+                            : undefined
+                        }
+                      />
                     </div>
                   </div>
                   
@@ -174,21 +202,33 @@ export default function Dashboard() {
                         <Edit2 className="w-5 h-5" />
                       </button>
                       <button
-                        onClick={() => handleDelete(card.id)}
+                        onClick={() => confirmDelete(card.id)}
                         className="p-2 text-zinc-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Eliminar"
                       >
                         <Trash2 className="w-5 h-5" />
                       </button>
                     </div>
-                    <a
-                      href={`/c/${card.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700"
-                    >
-                      Ver tarjeta <ExternalLink className="w-4 h-4" />
-                    </a>
+                    <div className="flex items-center gap-4">
+                      {(isAdmin || isEnterprise || isSubscription) && (
+                        <button
+                          onClick={handleAddToWallet}
+                          className="flex items-center gap-2 text-sm font-medium text-zinc-600 hover:text-zinc-900"
+                          title="Añadir a Wallet"
+                        >
+                          <Wallet className="w-4 h-4" />
+                          <span className="hidden sm:inline">Añadir a Wallet</span>
+                        </button>
+                      )}
+                      <a
+                        href={`/c/${card.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-700"
+                      >
+                        Ver tarjeta <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
                   </div>
                 </div>
               );
@@ -196,6 +236,18 @@ export default function Dashboard() {
           </div>
         )}
       </main>
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Eliminar Tarjeta"
+        message="¿Estás seguro de que quieres eliminar esta tarjeta? Esta acción no se puede deshacer."
+        onConfirm={handleDelete}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setCardToDelete(null);
+        }}
+        confirmText="Eliminar"
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { db, auth } from '../firebase';
 import { Users, Building2, Palette, Plus, Edit2, Trash2, ExternalLink, Search, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function EnterpriseDashboard() {
   const { user } = useAuth();
@@ -12,6 +13,9 @@ export default function EnterpriseDashboard() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('employees');
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -36,15 +40,22 @@ export default function EnterpriseDashboard() {
     fetchEnterpriseData();
   }, [user, navigate]);
 
-  const handleDelete = async (cardId: string) => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar la tarjeta de este empleado?')) {
-      try {
-        await deleteDoc(doc(db, 'cards', cardId));
-        setCards(cards.filter(c => c.id !== cardId));
-      } catch (error) {
-        console.error("Error deleting card:", error);
-        alert("Error al eliminar la tarjeta");
-      }
+  const confirmDelete = (cardId: string) => {
+    setCardToDelete(cardId);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!cardToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'cards', cardToDelete));
+      setCards(cards.filter(c => c.id !== cardToDelete));
+    } catch (error) {
+      console.error("Error deleting card:", error);
+      alert("Error al eliminar la tarjeta");
+    } finally {
+      setDeleteModalOpen(false);
+      setCardToDelete(null);
     }
   };
 
@@ -68,9 +79,10 @@ export default function EnterpriseDashboard() {
     <div className="min-h-screen bg-zinc-50 pb-20">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-brand-600" />
-            <span className="font-bold text-xl tracking-tight text-zinc-900">Panel Corporativo</span>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
+            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
+            <span className="font-bold text-xl tracking-tight text-zinc-900 ml-2">Panel Corporativo</span>
           </div>
           <button 
             onClick={() => navigate('/dashboard')}
@@ -211,7 +223,7 @@ export default function EnterpriseDashboard() {
                               <ExternalLink className="w-4 h-4" />
                             </a>
                             <button 
-                              onClick={() => handleDelete(card.id)}
+                              onClick={() => confirmDelete(card.id)}
                               className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Eliminar empleado"
                             >
@@ -250,6 +262,18 @@ export default function EnterpriseDashboard() {
         )}
 
       </main>
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title="Eliminar Empleado"
+        message="¿Estás seguro de que quieres eliminar la tarjeta de este empleado? Esta acción no se puede deshacer."
+        onConfirm={handleDelete}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setCardToDelete(null);
+        }}
+        confirmText="Eliminar"
+      />
     </div>
   );
 }

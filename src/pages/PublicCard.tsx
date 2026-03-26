@@ -13,8 +13,6 @@ export default function PublicCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [showWalletModal, setShowWalletModal] = useState(false);
-
   useEffect(() => {
     const fetchCard = async () => {
       if (!cardId) return;
@@ -99,7 +97,7 @@ END:VCARD`;
   };
 
   const handleAddToWallet = () => {
-    setShowWalletModal(true);
+    alert('Funcionalidad de Wallet en desarrollo. Próximamente podrás descargar tu pase para Apple Wallet y Google Wallet.');
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-zinc-50">Cargando...</div>;
@@ -155,7 +153,7 @@ END:VCARD`;
               className="w-full py-4 bg-black text-white rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-lg shadow-black/20"
             >
               <Wallet className="w-5 h-5" />
-              Añadir a Apple / Google Wallet
+              Añadir a Wallet
             </button>
           )}
         </div>
@@ -244,55 +242,6 @@ END:VCARD`;
           )}
         </div>
       </div>
-
-      {/* Wallet Modal */}
-      {showWalletModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-zinc-900">Añadir a Wallet</h2>
-              <button 
-                onClick={() => setShowWalletModal(false)}
-                className="text-zinc-500 hover:text-zinc-700"
-              >
-                ✕
-              </button>
-            </div>
-            
-            <div className="space-y-4 mb-6">
-              <p className="text-zinc-600 text-sm">
-                Para añadir esta tarjeta a Apple Wallet o Google Wallet, se requiere una integración avanzada con certificados de desarrollador.
-              </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-                <p className="font-semibold mb-1">Nota para el administrador:</p>
-                <p>La generación de archivos .pkpass reales requiere una cuenta de Apple Developer y un servidor backend para firmar criptográficamente los pases. Google Wallet requiere la API de Google Pay.</p>
-              </div>
-              <p className="text-zinc-600 text-sm">
-                Como alternativa, puedes descargar la tarjeta de contacto (.vcf) que es compatible con todos los dispositivos.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => {
-                  generateVCard();
-                  setShowWalletModal(false);
-                }}
-                className="w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <Download className="w-5 h-5" />
-                Descargar Contacto (.vcf)
-              </button>
-              <button
-                onClick={() => setShowWalletModal(false)}
-                className="w-full py-3 bg-zinc-100 text-zinc-700 rounded-xl font-medium hover:bg-zinc-200 transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

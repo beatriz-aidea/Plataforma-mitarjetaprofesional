@@ -40,11 +40,13 @@ service cloud.firestore {
     
     // Domain Validators
     function isValidUser() {
-      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'companyId']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'companyId', 'companyName']) &&
              request.resource.data.uid is string &&
              request.resource.data.email is string &&
              request.resource.data.role in ['free', 'subscription', 'enterprise', 'admin'] &&
-             request.resource.data.createdAt is timestamp;
+             request.resource.data.createdAt is timestamp &&
+             (!('companyId' in request.resource.data) || request.resource.data.companyId is string) &&
+             (!('companyName' in request.resource.data) || request.resource.data.companyName is string);
     }
 
     function isValidCard() {
@@ -59,15 +61,26 @@ service cloud.firestore {
     }
 
     function isValidOrder() {
-      return hasRequiredFields(['id', 'userId', 'cardId', 'design', 'status', 'shippingAddress', 'createdAt']) &&
+      return hasRequiredFields(['id', 'userId', 'cardId', 'status', 'shippingAddress', 'createdAt']) &&
              request.resource.data.id is string &&
              request.resource.data.userId is string &&
              request.resource.data.cardId is string &&
-             request.resource.data.design is string &&
              request.resource.data.status in ['pending', 'confirmed', 'paid', 'shipped'] &&
              request.resource.data.createdAt is timestamp &&
              request.resource.data.shippingAddress is map &&
-             request.resource.data.shippingAddress.keys().hasAll(['fullName', 'street', 'city', 'zip', 'country']);
+             request.resource.data.shippingAddress.keys().hasAll(['fullName', 'street', 'city', 'province', 'zip', 'country']);
+    }
+
+    function isValidProduct() {
+      return hasRequiredFields(['id', 'name', 'price', 'createdAt']) &&
+             request.resource.data.id is string &&
+             request.resource.data.name is string &&
+             request.resource.data.price is number &&
+             (!('imageUrl' in request.resource.data) || request.resource.data.imageUrl is string) &&
+             (!('features' in request.resource.data) || request.resource.data.features is string) &&
+             (!('colors' in request.resource.data) || request.resource.data.colors is string) &&
+             (!('datasheetUrl' in request.resource.data) || request.resource.data.datasheetUrl is string) &&
+             request.resource.data.createdAt is timestamp;
     }
 
     // ===============================================================
@@ -114,6 +127,13 @@ service cloud.firestore {
                     isValidOrder() &&
                     request.resource.data.userId == resource.data.userId &&
                     request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidProduct();
+      allow update: if isAdmin() && isValidProduct() && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin();
     }
   }

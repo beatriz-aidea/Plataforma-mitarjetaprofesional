@@ -1,16 +1,89 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2 } from 'lucide-react';
+import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({ 
+    name: '', 
+    price: 0, 
+    imageUrl: '',
+    features: '',
+    colors: '',
+    datasheetUrl: ''
+  });
+
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'user' | 'card' | 'product', id: string } | null>(null);
+  const [activeTab, setActiveTab] = useState('users'); // 'users', 'enterprises', 'cards', 'products'
+
+  const compressImage = (file: File, callback: (dataUrl: string) => void) => {
+    if (file.size > 5 * 1024 * 1024) {
+      alert('La imagen es demasiado grande. Máximo 5MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1024;
+        const MAX_HEIGHT = 1024;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) compressImage(file, (dataUrl) => setNewProduct(prev => ({ ...prev, imageUrl: dataUrl })));
+  };
+
+  const handleDatasheetUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('El PDF es demasiado grande. Máximo 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewProduct(prev => ({ ...prev, datasheetUrl: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -36,6 +109,11 @@ export default function AdminDashboard() {
         const ordersData = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setOrders(ordersData);
 
+        // Fetch all products
+        const productsSnapshot = await getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc')));
+        const productsData = productsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setProducts(productsData);
+
       } catch (err: any) {
         console.error("Error fetching admin data:", err);
         setError('No tienes permisos de administrador o hubo un error al cargar los datos.');
@@ -49,8 +127,21 @@ export default function AdminDashboard() {
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+      const updates: any = { role: newRole };
+      
+      if (newRole === 'enterprise') {
+        const companyName = window.prompt('Introduce el nombre de la empresa para este panel corporativo:');
+        if (companyName === null) return; // User cancelled
+        if (companyName.trim()) {
+          updates.companyName = companyName.trim();
+        }
+      } else {
+        // Optionally remove companyName if changing away from enterprise, 
+        // but it's safer to just leave it or set to null.
+      }
+
+      await updateDoc(doc(db, 'users', userId), updates);
+      setUsers(users.map(u => u.id === userId ? { ...u, ...updates } : u));
       alert('Rol actualizado correctamente');
     } catch (err) {
       console.error("Error updating role:", err);
@@ -58,15 +149,64 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteCard = async (cardId: string) => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar esta tarjeta permanentemente?')) {
-      try {
-        await deleteDoc(doc(db, 'cards', cardId));
-        setCards(cards.filter(c => c.id !== cardId));
-      } catch (error) {
-        console.error("Error deleting card:", error);
-        alert("Error al eliminar la tarjeta");
+  const confirmDelete = (type: 'user' | 'card' | 'product', id: string) => {
+    setItemToDelete({ type, id });
+    setDeleteModalOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!itemToDelete) return;
+    const { type, id } = itemToDelete;
+
+    try {
+      if (type === 'card') {
+        await deleteDoc(doc(db, 'cards', id));
+        setCards(cards.filter(c => c.id !== id));
+      } else if (type === 'user') {
+        // Delete user's cards
+        const userCards = cards.filter(c => c.ownerUid === id);
+        for (const card of userCards) {
+          await deleteDoc(doc(db, 'cards', card.id));
+        }
+        // Delete user document
+        await deleteDoc(doc(db, 'users', id));
+        // Update state
+        setUsers(users.filter(u => u.id !== id));
+        setCards(cards.filter(c => c.ownerUid !== id));
+      } else if (type === 'product') {
+        await deleteDoc(doc(db, 'products', id));
+        setProducts(products.filter(p => p.id !== id));
       }
+    } catch (error) {
+      console.error(`Error deleting ${type}:`, error);
+      alert(`Error al eliminar el registro`);
+    } finally {
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+    }
+  };
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const productId = crypto.randomUUID();
+      const productData = {
+        id: productId,
+        name: newProduct.name,
+        price: Number(newProduct.price),
+        imageUrl: newProduct.imageUrl || '',
+        features: newProduct.features || '',
+        colors: newProduct.colors || '',
+        datasheetUrl: newProduct.datasheetUrl || '',
+        createdAt: serverTimestamp()
+      };
+      await setDoc(doc(db, 'products', productId), productData);
+      setProducts([{ ...productData, createdAt: new Date() }, ...products]);
+      setShowProductModal(false);
+      setNewProduct({ name: '', price: 0, imageUrl: '', features: '', colors: '', datasheetUrl: '' });
+    } catch (error) {
+      console.error("Error adding product:", error);
+      alert("Error al añadir el producto");
     }
   };
 
@@ -100,9 +240,10 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-zinc-50 pb-20">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-6 h-6 text-brand-600" />
-            <span className="font-bold text-xl tracking-tight text-zinc-900">Panel de Administración</span>
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
+            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
+            <span className="font-bold text-xl tracking-tight text-zinc-900 ml-2">Panel de Administración</span>
           </div>
           <button 
             onClick={() => navigate('/dashboard')}
@@ -145,7 +286,44 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-4 mb-8 border-b border-zinc-200">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'users' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            Usuarios
+          </button>
+          <button
+            onClick={() => setActiveTab('enterprises')}
+            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'enterprises' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            Empresas
+          </button>
+          <button
+            onClick={() => setActiveTab('cards')}
+            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'cards' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            Tarjetas
+          </button>
+          <button
+            onClick={() => setActiveTab('products')}
+            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'products' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            Productos NFC
+          </button>
+        </div>
+
         {/* Users Table */}
+        {activeTab === 'users' && (
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50">
             <h2 className="font-bold text-lg text-zinc-900">Gestión de Usuarios</h2>
@@ -180,18 +358,28 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-zinc-500">{userCards.length} tarjetas</td>
                       <td className="px-6 py-4">
-                        {/* Como admin, puedes ir a editar sus tarjetas */}
-                        <div className="flex gap-2">
-                          {userCards.map(c => (
-                            <button 
-                              key={c.id}
-                              onClick={() => navigate(`/edit/${c.id}`)}
-                              className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
-                              title={`Editar tarjeta de ${c.identity?.firstName}`}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                          ))}
+                        <div className="flex items-center gap-2">
+                          {/* Como admin, puedes ir a editar sus tarjetas */}
+                          <div className="flex gap-1 border-r border-zinc-200 pr-2 mr-2">
+                            {userCards.length === 0 && <span className="text-xs text-zinc-400">Sin tarjetas</span>}
+                            {userCards.map(c => (
+                              <button 
+                                key={c.id}
+                                onClick={() => navigate(`/edit/${c.id}`)}
+                                className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                                title={`Editar tarjeta de ${c.identity?.firstName}`}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => confirmDelete('user', user.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar usuario"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -201,9 +389,73 @@ export default function AdminDashboard() {
             </table>
           </div>
         </div>
+        )}
+
+        {/* Enterprises Table */}
+        {activeTab === 'enterprises' && (
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8">
+          <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
+            <h2 className="font-bold text-lg text-zinc-900">Gestión de Empresas</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
+                <tr>
+                  <th className="px-6 py-3 font-medium">Empresa</th>
+                  <th className="px-6 py-3 font-medium">Email Administrador</th>
+                  <th className="px-6 py-3 font-medium">Empleados (Tarjetas)</th>
+                  <th className="px-6 py-3 font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {users.filter(u => u.role === 'enterprise').map(user => {
+                  const userCards = cards.filter(c => c.ownerUid === user.id);
+                  return (
+                    <tr key={user.id} className="hover:bg-zinc-50">
+                      <td className="px-6 py-4 font-medium text-zinc-900">{user.companyName || 'Sin nombre'}</td>
+                      <td className="px-6 py-4 text-zinc-500">{user.email}</td>
+                      <td className="px-6 py-4 text-zinc-500">{userCards.length} empleados</td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => navigate(`/edit?ownerUid=${user.id}`)}
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors"
+                            title="Añadir empleado a esta empresa"
+                          >
+                            <Plus className="w-4 h-4" /> Añadir Empleado
+                          </button>
+                          <button 
+                            onClick={() => {
+                              // Filtrar tarjetas en la vista de tarjetas
+                              setActiveTab('cards');
+                              // Podríamos añadir un filtro de búsqueda por ownerUid en el futuro
+                            }}
+                            className="p-1.5 text-zinc-600 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Ver empleados (Ir a Tarjetas)"
+                          >
+                            <Users className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {users.filter(u => u.role === 'enterprise').length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
+                      No hay empresas registradas. Cambia el rol de un usuario a "Empresa" para crear una.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        )}
 
         {/* Cards Table */}
-        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+        {activeTab === 'cards' && (
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50">
             <h2 className="font-bold text-lg text-zinc-900">Todas las Tarjetas</h2>
           </div>
@@ -245,7 +497,7 @@ export default function AdminDashboard() {
                         <ExternalLink className="w-4 h-4" />
                       </a>
                       <button 
-                        onClick={() => handleDeleteCard(card.id)}
+                        onClick={() => confirmDelete('card', card.id)}
                         className="p-2 text-zinc-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         title="Eliminar"
                       >
@@ -258,8 +510,177 @@ export default function AdminDashboard() {
             </table>
           </div>
         </div>
+        )}
+
+        {/* Products Table */}
+        {activeTab === 'products' && (
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
+            <h2 className="font-bold text-lg text-zinc-900">Galería de Productos NFC</h2>
+            <button 
+              onClick={() => setShowProductModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Añadir Producto
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
+                <tr>
+                  <th className="px-6 py-3 font-medium">Imagen</th>
+                  <th className="px-6 py-3 font-medium">Nombre</th>
+                  <th className="px-6 py-3 font-medium">Precio</th>
+                  <th className="px-6 py-3 font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {products.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
+                      No hay productos en la galería. Añade uno para empezar.
+                    </td>
+                  </tr>
+                ) : products.map(product => (
+                  <tr key={product.id} className="hover:bg-zinc-50">
+                    <td className="px-6 py-4">
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt={product.name} className="w-12 h-12 rounded-lg object-cover border border-zinc-200" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-lg bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-400">
+                          <Smartphone className="w-6 h-6" />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-zinc-900">{product.name}</td>
+                    <td className="px-6 py-4 text-zinc-500">{product.price}€</td>
+                    <td className="px-6 py-4">
+                      <button 
+                        onClick={() => confirmDelete('product', product.id)}
+                        className="p-2 text-zinc-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        )}
 
       </main>
+
+      {/* Add Product Modal */}
+      {showProductModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl my-8">
+            <h3 className="text-xl font-bold text-zinc-900 mb-4">Añadir Producto NFC</h3>
+            <form onSubmit={handleAddProduct} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre del producto</label>
+                <input 
+                  required 
+                  type="text" 
+                  value={newProduct.name} 
+                  onChange={e => setNewProduct({...newProduct, name: e.target.value})} 
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" 
+                  placeholder="Ej: Llavero NFC Premium"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Características</label>
+                <textarea 
+                  value={newProduct.features} 
+                  onChange={e => setNewProduct({...newProduct, features: e.target.value})} 
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none resize-none h-24" 
+                  placeholder="Ej: Material resistente al agua&#10;Chip NTAG215&#10;Acabado mate"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Colores disponibles</label>
+                <input 
+                  type="text" 
+                  value={newProduct.colors} 
+                  onChange={e => setNewProduct({...newProduct, colors: e.target.value})} 
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" 
+                  placeholder="Ej: Negro, Blanco, Azul"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Precio (€)</label>
+                <input 
+                  required 
+                  type="number" 
+                  min="0"
+                  step="0.01"
+                  value={newProduct.price} 
+                  onChange={e => setNewProduct({...newProduct, price: Number(e.target.value)})} 
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" 
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Imagen del producto</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleProductImageUpload}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm" 
+                />
+                {newProduct.imageUrl && <p className="text-xs text-emerald-600 mt-1">Imagen cargada correctamente</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Ficha Técnica (PDF)</label>
+                <input 
+                  type="file" 
+                  accept="application/pdf"
+                  onChange={handleDatasheetUpload}
+                  className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm" 
+                />
+                {newProduct.datasheetUrl && <p className="text-xs text-emerald-600 mt-1">Ficha técnica cargada correctamente</p>}
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => setShowProductModal(false)}
+                  className="flex-1 px-4 py-2 text-zinc-700 bg-zinc-100 hover:bg-zinc-200 rounded-lg font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 px-4 py-2 text-white bg-brand-600 hover:bg-brand-700 rounded-lg font-medium transition-colors"
+                >
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        title={
+          itemToDelete?.type === 'user' ? 'Eliminar Usuario' :
+          itemToDelete?.type === 'card' ? 'Eliminar Tarjeta' :
+          'Eliminar Producto'
+        }
+        message={
+          itemToDelete?.type === 'user' ? '¿Estás seguro de que quieres eliminar este usuario y todas sus tarjetas? Esta acción no se puede deshacer.' :
+          itemToDelete?.type === 'card' ? '¿Estás seguro de que quieres eliminar esta tarjeta permanentemente?' :
+          '¿Estás seguro de que quieres eliminar este producto?'
+        }
+        onConfirm={executeDelete}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setItemToDelete(null);
+        }}
+        confirmText="Eliminar"
+      />
     </div>
   );
 }

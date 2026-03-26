@@ -1,5 +1,5 @@
 import React from 'react';
-import { Phone, Mail, Globe } from 'lucide-react';
+import { Phone, Mail, Globe, Building2, Linkedin, Instagram, Twitter, Music2, FileText } from 'lucide-react';
 
 interface CardTemplateProps {
   templateId: number;
@@ -9,16 +9,22 @@ interface CardTemplateProps {
     firstName: string;
     lastName: string;
     role: string;
-    phone: string;
+    company: string;
+    mobile: string;
+    landline: string;
     email: string;
     website: string;
+    linkedin: string;
+    instagram: string;
+    twitter: string;
+    tiktok: string;
   };
 }
 
 export default function CardTemplate({ templateId, color, logo, data }: CardTemplateProps) {
-  const { firstName, lastName, role, phone, email, website } = data;
-  const fullName = `${firstName} ${lastName}`.trim() || 'NOMBRE APELLIDO';
-  const displayRole = role || 'Cargo profesional';
+  const { firstName, lastName, role, company, mobile, landline, email, website, linkedin, instagram, twitter, tiktok } = data;
+  const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const displayRole = [role, company].filter(Boolean).join(' - ');
 
   // Common styles
   const bgWhite = 'bg-white text-zinc-900';
@@ -27,6 +33,14 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
 
   const renderLogo = (className = "w-12 h-12") => {
     if (logo) {
+      if (logo.startsWith('data:application/pdf')) {
+        return (
+          <div className={`${className} bg-zinc-100 rounded flex flex-col items-center justify-center text-zinc-500`}>
+            <FileText className="w-1/2 h-1/2 mb-0.5" />
+            <span className="text-[8px] font-bold">PDF</span>
+          </div>
+        );
+      }
       return <img src={logo} alt="Logo" className={`${className} object-contain`} />;
     }
     return (
@@ -38,17 +52,27 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
 
   const renderContact = (className = "text-[8px] flex flex-col gap-1", iconColor = "text-zinc-500") => (
     <div className={className}>
-      {phone && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {phone}</div>}
+      {mobile && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {mobile}</div>}
+      {landline && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {landline}</div>}
       {email && <div className="flex items-center gap-1.5"><Mail className={`w-2.5 h-2.5 ${iconColor}`} /> {email}</div>}
       {website && <div className="flex items-center gap-1.5"><Globe className={`w-2.5 h-2.5 ${iconColor}`} /> {website}</div>}
+      {linkedin && <div className="flex items-center gap-1.5"><Linkedin className={`w-2.5 h-2.5 ${iconColor}`} /> {linkedin}</div>}
+      {instagram && <div className="flex items-center gap-1.5"><Instagram className={`w-2.5 h-2.5 ${iconColor}`} /> {instagram}</div>}
+      {twitter && <div className="flex items-center gap-1.5"><Twitter className={`w-2.5 h-2.5 ${iconColor}`} /> {twitter}</div>}
+      {tiktok && <div className="flex items-center gap-1.5"><Music2 className={`w-2.5 h-2.5 ${iconColor}`} /> {tiktok}</div>}
     </div>
   );
 
-  const renderContactHorizontal = (className = "text-[8px] flex gap-3", iconColor = "text-zinc-500") => (
+  const renderContactHorizontal = (className = "text-[8px] flex flex-wrap gap-3", iconColor = "text-zinc-500") => (
     <div className={className}>
-      {phone && <div className="flex items-center gap-1"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {phone}</div>}
+      {mobile && <div className="flex items-center gap-1"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {mobile}</div>}
+      {landline && <div className="flex items-center gap-1"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {landline}</div>}
       {email && <div className="flex items-center gap-1"><Mail className={`w-2.5 h-2.5 ${iconColor}`} /> {email}</div>}
       {website && <div className="flex items-center gap-1"><Globe className={`w-2.5 h-2.5 ${iconColor}`} /> {website}</div>}
+      {linkedin && <div className="flex items-center gap-1"><Linkedin className={`w-2.5 h-2.5 ${iconColor}`} /> {linkedin}</div>}
+      {instagram && <div className="flex items-center gap-1"><Instagram className={`w-2.5 h-2.5 ${iconColor}`} /> {instagram}</div>}
+      {twitter && <div className="flex items-center gap-1"><Twitter className={`w-2.5 h-2.5 ${iconColor}`} /> {twitter}</div>}
+      {tiktok && <div className="flex items-center gap-1"><Music2 className={`w-2.5 h-2.5 ${iconColor}`} /> {tiktok}</div>}
     </div>
   );
 
@@ -199,10 +223,15 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
     case 13:
       return (
         <div className={`w-full h-full ${bgWhite} p-6 flex flex-col items-center justify-center text-center relative`}>
-          <div className="flex gap-4 mb-4">
-            {phone && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Phone className="w-3 h-3 text-zinc-600" /></div>}
+          <div className="flex flex-wrap justify-center gap-2 mb-4">
+            {mobile && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Phone className="w-3 h-3 text-zinc-600" /></div>}
+            {landline && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Phone className="w-3 h-3 text-zinc-600" /></div>}
             {email && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Mail className="w-3 h-3 text-zinc-600" /></div>}
             {website && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Globe className="w-3 h-3 text-zinc-600" /></div>}
+            {linkedin && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Linkedin className="w-3 h-3 text-zinc-600" /></div>}
+            {instagram && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Instagram className="w-3 h-3 text-zinc-600" /></div>}
+            {twitter && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Twitter className="w-3 h-3 text-zinc-600" /></div>}
+            {tiktok && <div className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center"><Music2 className="w-3 h-3 text-zinc-600" /></div>}
           </div>
           <div>
             <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>

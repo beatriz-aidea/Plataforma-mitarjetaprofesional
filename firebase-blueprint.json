@@ -90,8 +90,15 @@
         "id": { "type": "string" },
         "userId": { "type": "string" },
         "cardId": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number" },
+        "designMode": { "type": "string" },
         "design": { "type": "string" },
+        "corporateColor": { "type": "string" },
         "logoUrl": { "type": "string" },
+        "customDesignUrl": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "confirmed", "paid", "shipped"] },
         "shippingAddress": {
           "type": "object",
@@ -99,14 +106,33 @@
             "fullName": { "type": "string" },
             "street": { "type": "string" },
             "city": { "type": "string" },
+            "province": { "type": "string" },
             "zip": { "type": "string" },
             "country": { "type": "string" }
           },
-          "required": ["fullName", "street", "city", "zip", "country"]
+          "required": ["fullName", "street", "city", "province", "zip", "country"]
         },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["id", "userId", "cardId", "design", "status", "shippingAddress", "createdAt"]
+      "required": ["id", "userId", "cardId", "status", "shippingAddress", "createdAt"]
+    },
+    "Product": {
+      "title": "Store Product",
+      "description": "A product available in the store (NFC gallery)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "features": { "type": "string" },
+        "colors": { "type": "string" },
+        "datasheetUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "price", "createdAt"]
     }
   },
   "firestore": {
@@ -121,6 +147,10 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/Order" },
       "description": "Physical card orders"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Store products (NFC gallery)"
     }
   }
 }
