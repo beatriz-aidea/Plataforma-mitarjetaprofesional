@@ -105,11 +105,38 @@ END:VCARD`;
 
   const hasPremiumFeatures = ownerRole === 'subscription' || ownerRole === 'enterprise' || ownerRole === 'admin';
 
+  const primaryColor = card.settings?.primaryColor || '#4f46e5'; // brand-600 default
+  const secondaryColor1 = card.settings?.secondaryColor1 || '#18181b'; // zinc-900 default
+  const secondaryColor2 = card.settings?.secondaryColor2 || '#fafafa'; // zinc-50 default
+
   return (
     <div className="min-h-screen bg-zinc-50 font-sans pb-20">
+      <style>
+        {`
+          .dynamic-hover:hover {
+            color: ${primaryColor} !important;
+          }
+          .dynamic-bg-hover:hover {
+            background-color: ${primaryColor} !important;
+            color: white !important;
+          }
+          .dynamic-border {
+            border-color: ${primaryColor} !important;
+          }
+          .dynamic-bg-light {
+            background-color: ${primaryColor}15 !important; /* 15 is hex for ~8% opacity */
+            color: ${primaryColor} !important;
+          }
+        `}
+      </style>
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-xl relative">
         {/* Header Background */}
-        <div className="h-48 bg-gradient-to-br from-brand-600 to-brand-800 relative">
+        <div className="h-48 relative" style={{ backgroundColor: primaryColor }}>
+          {card.settings?.showLogo !== false && card.identity.logoUrl && (
+            <div className="absolute top-4 left-4">
+              <img src={card.identity.logoUrl} alt="Logo" className="h-12 object-contain bg-white/20 backdrop-blur-md p-2 rounded-lg" referrerPolicy="no-referrer" />
+            </div>
+          )}
           <div className="absolute top-4 right-4 flex gap-2">
             <button onClick={handleShare} className="w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-white/30 transition-colors">
               <Share2 className="w-5 h-5" />
@@ -120,7 +147,7 @@ END:VCARD`;
         {/* Profile Info */}
         <div className="px-6 relative -mt-20 mb-8 text-center">
           <div className="w-32 h-32 mx-auto bg-white rounded-full p-1 shadow-lg mb-4">
-            {card.identity.photoUrl ? (
+            {card.settings?.showPhoto !== false && card.identity.photoUrl ? (
               <img src={card.identity.photoUrl} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full rounded-full bg-zinc-100 flex items-center justify-center text-4xl text-zinc-400 font-bold">
@@ -129,7 +156,7 @@ END:VCARD`;
             )}
           </div>
           <h1 className="text-2xl font-bold text-zinc-900">{card.identity.firstName} {card.identity.lastName}</h1>
-          <p className="text-lg text-brand-600 font-medium mb-1">{card.identity.role}</p>
+          <p className="text-lg font-medium mb-1" style={{ color: primaryColor }}>{card.identity.role}</p>
           {card.identity.company && (
             <p className="text-zinc-500 flex items-center justify-center gap-1">
               <Building2 className="w-4 h-4" /> {card.identity.company}
@@ -141,7 +168,8 @@ END:VCARD`;
         <div className="px-6 mb-8 space-y-3">
           <button
             onClick={generateVCard}
-            className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors shadow-lg shadow-zinc-900/20"
+            className="w-full py-4 text-white rounded-2xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-lg"
+            style={{ backgroundColor: secondaryColor1 }}
           >
             <Download className="w-5 h-5" />
             Guardar en Contactos
@@ -160,9 +188,9 @@ END:VCARD`;
 
         {/* Contact Details */}
         <div className="px-6 space-y-6">
-          <div className="bg-zinc-50 rounded-3xl p-6 space-y-4 border border-zinc-100">
+          <div className="rounded-3xl p-6 space-y-4 border border-zinc-100" style={{ backgroundColor: secondaryColor2 }}>
             {card.contact.mobile && (
-              <a href={`tel:${card.contact.mobile}`} className="flex items-center gap-4 text-zinc-700 hover:text-brand-600 transition-colors">
+              <a href={`tel:${card.contact.mobile}`} className="flex items-center gap-4 text-zinc-700 transition-colors dynamic-hover">
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0">
                   <Phone className="w-5 h-5" />
                 </div>
@@ -174,7 +202,7 @@ END:VCARD`;
             )}
             
             {card.contact.email && (
-              <a href={`mailto:${card.contact.email}`} className="flex items-center gap-4 text-zinc-700 hover:text-brand-600 transition-colors">
+              <a href={`mailto:${card.contact.email}`} className="flex items-center gap-4 text-zinc-700 transition-colors dynamic-hover">
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0">
                   <Mail className="w-5 h-5" />
                 </div>
@@ -186,7 +214,7 @@ END:VCARD`;
             )}
 
             {card.contact.website && (
-              <a href={card.contact.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 text-zinc-700 hover:text-brand-600 transition-colors">
+              <a href={card.contact.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-4 text-zinc-700 transition-colors dynamic-hover">
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm shrink-0">
                   <Globe className="w-5 h-5" />
                 </div>
@@ -216,17 +244,17 @@ END:VCARD`;
           {(card.social.linkedin || card.social.twitter || card.social.instagram || card.social.tiktok) && (
             <div className="flex justify-center gap-4 py-4">
               {card.social.linkedin && (
-                <a href={card.social.linkedin} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center hover:bg-brand-100 hover:text-brand-600 transition-colors">
+                <a href={card.social.linkedin} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center transition-colors dynamic-bg-hover">
                   <Linkedin className="w-5 h-5" />
                 </a>
               )}
               {card.social.twitter && (
-                <a href={card.social.twitter} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center hover:bg-sky-100 hover:text-sky-500 transition-colors">
+                <a href={card.social.twitter} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center transition-colors dynamic-bg-hover">
                   <Twitter className="w-5 h-5" />
                 </a>
               )}
               {card.social.instagram && (
-                <a href={card.social.instagram} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center hover:bg-pink-100 hover:text-pink-600 transition-colors">
+                <a href={card.social.instagram} target="_blank" rel="noopener noreferrer" className="w-12 h-12 bg-zinc-100 text-zinc-600 rounded-full flex items-center justify-center transition-colors dynamic-bg-hover">
                   <Instagram className="w-5 h-5" />
                 </a>
               )}
@@ -235,9 +263,9 @@ END:VCARD`;
 
           {/* Context Notes */}
           {card.context.notes && (
-            <div className="bg-brand-50 rounded-3xl p-6 border border-brand-100">
-              <h3 className="text-sm font-bold text-brand-900 mb-2 uppercase tracking-wider">Sobre mí</h3>
-              <p className="text-brand-800 text-sm leading-relaxed">{card.context.notes}</p>
+            <div className="rounded-3xl p-6 border dynamic-bg-light dynamic-border">
+              <h3 className="text-sm font-bold mb-2 uppercase tracking-wider">Sobre mí</h3>
+              <p className="text-sm leading-relaxed">{card.context.notes}</p>
             </div>
           )}
         </div>

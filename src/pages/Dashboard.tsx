@@ -164,31 +164,64 @@ export default function Dashboard() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {cards.map((card) => {
               const cardUrl = `${window.location.origin}/c/${card.id}`;
+              const primaryColor = card.settings?.primaryColor || '#4f46e5';
+              const secondaryColor1 = card.settings?.secondaryColor1 || '#18181b';
+              const secondaryColor2 = card.settings?.secondaryColor2 || '#fafafa';
+
               return (
                 <div key={card.id} className="bg-white rounded-2xl border border-zinc-200 overflow-hidden shadow-sm flex flex-col">
-                  <div className="p-6 flex-1">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="font-bold text-lg text-zinc-900">{card.identity?.firstName} {card.identity?.lastName}</h3>
-                        <p className="text-sm text-zinc-500">{card.identity?.role} en {card.identity?.company}</p>
+                  <div className="p-6 flex-1 flex flex-col items-center">
+                    
+                    {/* Tarjeta Física Preview (Frontal y Trasera) */}
+                    <div className="w-full max-w-sm aspect-[1.586/1] rounded-xl shadow-lg relative overflow-hidden mb-6 flex flex-col" style={{ backgroundColor: secondaryColor2 }}>
+                      {/* Frontal simulado */}
+                      <div className="flex-1 p-4 flex flex-col justify-between relative z-10">
+                        <div className="flex justify-between items-start">
+                          {card.settings?.showLogo !== false && card.identity?.logoUrl ? (
+                            <img src={card.identity.logoUrl} alt="Logo" className="h-8 object-contain" />
+                          ) : (
+                            <div className="h-8"></div>
+                          )}
+                          {card.settings?.showPhoto !== false && card.identity?.photoUrl && (
+                            <img src={card.identity.photoUrl} alt="Profile" className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-lg" style={{ color: secondaryColor1 }}>{card.identity?.firstName} {card.identity?.lastName}</h3>
+                          <p className="text-xs font-medium opacity-80" style={{ color: primaryColor }}>{card.identity?.role}</p>
+                          <p className="text-xs opacity-60" style={{ color: secondaryColor1 }}>{card.identity?.company}</p>
+                        </div>
                       </div>
+                      {/* Decoración */}
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br opacity-10 rounded-bl-full" style={{ backgroundImage: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor1})` }}></div>
+                    </div>
+
+                    {/* Trasera simulada con QR */}
+                    <div className="w-full max-w-sm aspect-[1.586/1] rounded-xl shadow-lg relative overflow-hidden flex items-center justify-center" style={{ backgroundColor: primaryColor }}>
+                      <div className="bg-white p-3 rounded-xl shadow-inner">
+                        <QRCodeSVG 
+                          value={cardUrl} 
+                          size={100} 
+                          level="H" 
+                          includeMargin={false} 
+                          imageSettings={
+                            card.settings?.qrLogo && card.settings?.qrLogoUrl 
+                              ? { src: card.settings.qrLogoUrl, height: 20, width: 20, excavate: true } 
+                              : undefined
+                          }
+                        />
+                      </div>
+                      {card.settings?.showLogo !== false && card.identity?.logoUrl && (
+                        <div className="absolute bottom-4 left-4 opacity-50">
+                          <img src={card.identity.logoUrl} alt="Logo" className="h-6 object-contain filter brightness-0 invert" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="w-full flex items-center justify-between mt-6">
                       <span className={`px-2 py-1 text-xs font-medium rounded-full ${card.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-600'}`}>
                         {card.status === 'active' ? 'Activa' : 'Inactiva'}
                       </span>
-                    </div>
-                    
-                    <div className="flex justify-center py-6 bg-zinc-50 rounded-xl mb-4">
-                      <QRCodeSVG 
-                        value={cardUrl} 
-                        size={120} 
-                        level="H" 
-                        includeMargin={true} 
-                        imageSettings={
-                          card.settings?.qrLogo && card.settings?.qrLogoUrl 
-                            ? { src: card.settings.qrLogoUrl, height: 24, width: 24, excavate: true } 
-                            : undefined
-                        }
-                      />
                     </div>
                   </div>
                   

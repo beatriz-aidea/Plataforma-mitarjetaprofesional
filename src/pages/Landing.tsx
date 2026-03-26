@@ -239,7 +239,13 @@ export default function Landing() {
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
-              onClick={openAuthModal}
+              onClick={() => {
+                if (user) {
+                  navigate('/dashboard');
+                } else {
+                  window.location.href = 'https://mitarjetaprofesional.com';
+                }
+              }}
               className="px-8 py-4 bg-brand-600 text-white text-lg font-semibold rounded-xl hover:bg-brand-700 transition-colors w-full sm:w-auto"
             >
               {user ? 'Ver mi tarjeta' : 'Crear mi tarjeta gratis'}

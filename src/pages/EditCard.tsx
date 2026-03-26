@@ -19,12 +19,20 @@ export default function EditCard() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [formData, setFormData] = useState({
-    identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '' },
+    identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '', logoUrl: '' },
     contact: { mobile: '', landline: '', email: '', website: '' },
     context: { notes: '' },
     address: { street: '', zip: '', city: '', province: '', country: '' },
     social: { linkedin: '', instagram: '', twitter: '', tiktok: '' },
-    settings: { qrLogo: false, qrLogoUrl: '' },
+    settings: { 
+      qrLogo: false, 
+      qrLogoUrl: '',
+      primaryColor: '#000000',
+      secondaryColor1: '#ffffff',
+      secondaryColor2: '#f3f4f6',
+      showPhoto: true,
+      showLogo: true
+    },
     status: 'active'
   });
 
@@ -71,7 +79,8 @@ export default function EditCard() {
     lastName: data.identity?.lastName || '',
     company: data.identity?.company || '',
     role: data.identity?.role || '',
-    photoUrl: data.identity?.photoUrl || ''
+    photoUrl: data.identity?.photoUrl || '',
+    logoUrl: data.identity?.logoUrl || ''
   },
   contact: {
     mobile: data.contact?.mobile || '',
@@ -95,7 +104,12 @@ export default function EditCard() {
   },
   settings: {
     qrLogo: data.settings?.qrLogo || false,
-    qrLogoUrl: data.settings?.qrLogoUrl || ''
+    qrLogoUrl: data.settings?.qrLogoUrl || '',
+    primaryColor: data.settings?.primaryColor || '#000000',
+    secondaryColor1: data.settings?.secondaryColor1 || '#ffffff',
+    secondaryColor2: data.settings?.secondaryColor2 || '#f3f4f6',
+    showPhoto: data.settings?.showPhoto !== false,
+    showLogo: data.settings?.showLogo !== false
   },
   status: data.status || 'active'
 });
@@ -257,7 +271,7 @@ export default function EditCard() {
                 <input type="text" value={formData.identity.role} onChange={e => handleChange('identity', 'role', e.target.value)} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none" />
               </div>
               <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-zinc-700 mb-1">Foto de Perfil / Logo</label>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Foto de Perfil</label>
                 <div className="flex items-center gap-4">
                   {formData.identity.photoUrl && (
                     <img src={formData.identity.photoUrl} alt="Preview" className="w-16 h-16 rounded-full object-cover border border-zinc-200" />
@@ -266,7 +280,7 @@ export default function EditCard() {
                     <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-xl hover:border-brand-500 hover:bg-brand-50 transition-colors cursor-pointer">
                       <Upload className="w-5 h-5 text-zinc-500" />
                       <span className="text-sm font-medium text-zinc-700">
-                        {uploadingImage ? 'Subiendo...' : 'Subir imagen (JPG, PNG)'}
+                        {uploadingImage ? 'Subiendo...' : 'Subir foto (JPG, PNG)'}
                       </span>
                       <input 
                         type="file" 
@@ -278,6 +292,84 @@ export default function EditCard() {
                     </label>
                   </div>
                 </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Logotipo de Empresa</label>
+                <div className="flex items-center gap-4">
+                  {formData.identity.logoUrl && (
+                    <img src={formData.identity.logoUrl} alt="Logo Preview" className="w-16 h-16 object-contain border border-zinc-200 rounded-lg" />
+                  )}
+                  <div className="flex-1">
+                    <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-xl hover:border-brand-500 hover:bg-brand-50 transition-colors cursor-pointer">
+                      <Upload className="w-5 h-5 text-zinc-500" />
+                      <span className="text-sm font-medium text-zinc-700">
+                        {uploadingImage ? 'Subiendo...' : 'Subir logotipo (JPG, PNG)'}
+                      </span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={handleImageUpload('identity', 'logoUrl')}
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Diseño */}
+          <section className="bg-white p-6 rounded-2xl border border-zinc-200 shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-zinc-900">Diseño y Colores</h2>
+            <div className="grid sm:grid-cols-3 gap-4 mb-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Color Principal (Trasera)</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={formData.settings.primaryColor} onChange={e => handleChange('settings', 'primaryColor', e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0 p-0" />
+                  <input type="text" value={formData.settings.primaryColor} onChange={e => handleChange('settings', 'primaryColor', e.target.value)} className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none uppercase" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Color Secundario 1</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={formData.settings.secondaryColor1} onChange={e => handleChange('settings', 'secondaryColor1', e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0 p-0" />
+                  <input type="text" value={formData.settings.secondaryColor1} onChange={e => handleChange('settings', 'secondaryColor1', e.target.value)} className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none uppercase" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Color Secundario 2</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={formData.settings.secondaryColor2} onChange={e => handleChange('settings', 'secondaryColor2', e.target.value)} className="w-10 h-10 rounded cursor-pointer border-0 p-0" />
+                  <input type="text" value={formData.settings.secondaryColor2} onChange={e => handleChange('settings', 'secondaryColor2', e.target.value)} className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none uppercase" />
+                </div>
+              </div>
+            </div>
+            
+            <div className="grid sm:grid-cols-2 gap-4 border-t border-zinc-100 pt-6">
+              <div className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  id="showPhoto"
+                  checked={formData.settings.showPhoto} 
+                  onChange={e => handleChange('settings', 'showPhoto', e.target.checked as any)} 
+                  className="w-5 h-5 text-brand-600 rounded border-zinc-300 focus:ring-brand-500"
+                />
+                <label htmlFor="showPhoto" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                  Mostrar foto de perfil en la tarjeta
+                </label>
+              </div>
+              <div className="flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  id="showLogo"
+                  checked={formData.settings.showLogo} 
+                  onChange={e => handleChange('settings', 'showLogo', e.target.checked as any)} 
+                  className="w-5 h-5 text-brand-600 rounded border-zinc-300 focus:ring-brand-500"
+                />
+                <label htmlFor="showLogo" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                  Mostrar logotipo en la tarjeta
+                </label>
               </div>
             </div>
           </section>
