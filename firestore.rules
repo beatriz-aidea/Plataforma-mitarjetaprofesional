@@ -32,19 +32,23 @@ service cloud.firestore {
       return request.resource.data.keys().hasOnly(fields);
     }
     function isAdmin() {
-      return isAuthenticated() &&
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "beatriz@aidea.es" && request.auth.token.email_verified == true));
+      return isAuthenticated() && (
+        request.auth.uid == "IekQHWYb1Ja2S7JB62th04pJkyZ2" ||
+        request.auth.token.email == "beatriz@aidea.es" || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
     
     // Domain Validators
     function isValidUser() {
-      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'companyId', 'companyName']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'updatedAt', 'companyId', 'companyName', 'isAnonymous']) &&
              request.resource.data.uid is string &&
              request.resource.data.email is string &&
-             request.resource.data.role in ['free', 'subscription', 'enterprise', 'admin'] &&
+             request.resource.data.role in ['free', 'pending', 'subscription', 'enterprise', 'admin'] &&
              request.resource.data.createdAt is timestamp &&
+             (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
+             (!('isAnonymous' in request.resource.data) || request.resource.data.isAnonymous is bool) &&
              (!('companyId' in request.resource.data) || request.resource.data.companyId is string) &&
              (!('companyName' in request.resource.data) || request.resource.data.companyName is string);
     }
@@ -54,6 +58,8 @@ service cloud.firestore {
              request.resource.data.id is string &&
              request.resource.data.ownerUid is string &&
              request.resource.data.status in ['active', 'inactive'] &&
+             (!('isAnonymous' in request.resource.data) || request.resource.data.isAnonymous is bool) &&
+             (!('ownerRole' in request.resource.data) || request.resource.data.ownerRole is string) &&
              request.resource.data.createdAt is timestamp &&
              request.resource.data.updatedAt is timestamp &&
              request.resource.data.identity is map &&
@@ -83,6 +89,14 @@ service cloud.firestore {
              request.resource.data.createdAt is timestamp;
     }
 
+    function isValidCustomField() {
+      return hasRequiredFields(['id', 'label', 'type']) &&
+             request.resource.data.id is string &&
+             request.resource.data.label is string &&
+             request.resource.data.type in ['text', 'url', 'email', 'phone'] &&
+             (!('icon' in request.resource.data) || request.resource.data.icon is string);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -92,19 +106,18 @@ service cloud.firestore {
       allow create: if isAuthenticated() && 
                     (isOwner(userId) || isAdmin()) && 
                     isValidUser() && 
-                    uidUnchanged() && 
-                    (request.resource.data.role == 'free' || isAdmin()); // Default to free unless admin
+                    uidUnchanged();
       allow update: if isAuthenticated() && 
                     (isOwner(userId) || isAdmin()) && 
                     isValidUser() && 
-                    uidNotModified() && 
-                    (request.resource.data.role == resource.data.role || isAdmin()); // Can't change own role
+                    uidNotModified();
       allow delete: if isAdmin();
     }
 
     match /cards/{cardId} {
       // Anyone can read an active card (for public sharing)
       allow read: if resource.data.status == 'active' || isDocOwner() || isAdmin();
+      allow list: if isAdmin() || (isAuthenticated() && request.query.limit == 1);
       allow create: if isAuthenticated() && 
                     (request.resource.data.ownerUid == request.auth.uid || isAdmin()) && 
                     isValidCard() && 
@@ -120,13 +133,13 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId || isAdmin());
       allow create: if isAuthenticated() && 
-                    request.resource.data.userId == request.auth.uid && 
+                    (request.resource.data.userId == request.auth.uid || isAdmin()) && 
                     isValidOrder();
       allow update: if isAuthenticated() && 
-                    request.auth.uid == resource.data.userId && 
+                    (request.auth.uid == resource.data.userId || isAdmin()) && 
                     isValidOrder() &&
-                    request.resource.data.userId == resource.data.userId &&
-                    request.resource.data.createdAt == resource.data.createdAt;
+                    (request.resource.data.userId == resource.data.userId || isAdmin()) &&
+                    (request.resource.data.createdAt == resource.data.createdAt || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -134,6 +147,13 @@ service cloud.firestore {
       allow read: if true;
       allow create: if isAdmin() && isValidProduct();
       allow update: if isAdmin() && isValidProduct() && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isAdmin();
+    }
+
+    match /customFields/{fieldId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidCustomField();
+      allow update: if isAdmin() && isValidCustomField();
       allow delete: if isAdmin();
     }
   }

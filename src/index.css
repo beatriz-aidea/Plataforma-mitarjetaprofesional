@@ -5,15 +5,27 @@
   --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-brand-50: #fdf2f6;
-  --color-brand-100: #fbe5ee;
-  --color-brand-200: #f7cce0;
-  --color-brand-300: #f2a6c9;
-  --color-brand-400: #ec73a8;
-  --color-brand-500: #d60b52;
-  --color-brand-600: #c10745;
-  --color-brand-700: #a30437;
-  --color-brand-800: #880631;
-  --color-brand-900: #71082b;
-  --color-brand-950: #450216;
+  --color-brand-50: #fdf2f5;
+  --color-brand-100: #fbe6ec;
+  --color-brand-200: #f6c0d0;
+  --color-brand-300: #f08fb0;
+  --color-brand-400: #ea598c;
+  --color-brand-500: #e02a5f;
+  --color-brand-600: #d61e51; /* Magenta */
+  --color-brand-700: #b81441;
+  --color-brand-800: #9a0f34;
+  --color-brand-900: #80102e;
+  --color-brand-950: #4a0618;
+
+  --color-zinc-50: #f2f2f4;
+  --color-zinc-100: #e6e6e9;
+  --color-zinc-200: #c0c0c8;
+  --color-zinc-300: #9a9ba6;
+  --color-zinc-400: #747585;
+  --color-zinc-500: #4e4f63;
+  --color-zinc-600: #3e3f4f;
+  --color-zinc-700: #2f303b;
+  --color-zinc-800: #1f2028;
+  --color-zinc-900: #0f1022; /* Azul noche */
+  --color-zinc-950: #080811;
 }

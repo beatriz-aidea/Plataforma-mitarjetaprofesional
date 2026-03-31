@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, getDocs, query, where, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import Logo from '../components/Logo';
 import { Users, Building2, Palette, Plus, Edit2, Trash2, ExternalLink, Search, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -79,11 +80,7 @@ export default function EnterpriseDashboard() {
     <div className="min-h-screen bg-zinc-50 pb-20">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
-            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
-            <span className="font-bold text-xl tracking-tight text-zinc-900 ml-2">Panel Corporativo</span>
-          </div>
+          <Logo />
           <button 
             onClick={() => navigate('/dashboard')}
             className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
@@ -207,14 +204,14 @@ export default function EnterpriseDashboard() {
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button 
-                              onClick={() => navigate(`/edit/${card.id}`)}
+                              onClick={() => navigate(`/edit/${encodeURIComponent(card.id)}`)}
                               className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
                               title="Editar empleado"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <a 
-                              href={`/c/${card.id}`}
+                              href={`/c/${encodeURIComponent(card.id)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

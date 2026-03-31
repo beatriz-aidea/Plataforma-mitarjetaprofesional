@@ -133,9 +133,26 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "price", "createdAt"]
+    },
+    "customFields": {
+      "title": "Custom Field Definition",
+      "description": "Definition of a custom field that can be added to cards",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "url", "email", "phone"] },
+        "icon": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "label", "type"]
     }
   },
   "firestore": {
+    "/customFields/{fieldId}": {
+      "schema": "customFields",
+      "description": "Collection of custom fields available for Premium/Enterprise users"
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles"

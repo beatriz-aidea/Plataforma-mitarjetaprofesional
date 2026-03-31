@@ -1,26 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { db, handleFirestoreError, OperationType } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import Logo from '../components/Logo';
-import { doc, getDoc, setDoc, getDocs, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { ArrowLeft, Save, Upload, Lock, Smartphone, User, Phone, Users, MapPin, Share2, Palette, QrCode, Briefcase, Mail, Globe, Check, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { doc, setDoc, getDocs, collection, serverTimestamp, updateDoc, query, where, limit } from 'firebase/firestore';
+import { ArrowLeft, Save, Upload, Lock, Smartphone, User, Phone, Users, MapPin, Share2, Palette, QrCode, Briefcase, Mail, Globe, Check, MessageCircle, Plus, Trash2, ExternalLink } from 'lucide-react';
 
-export default function EditCard() {
-  const { user, userRole } = useAuth();
+export default function CreateCard() {
+  const { user, userRole, signInAnon } = useAuth();
   const navigate = useNavigate();
-  const { cardId } = useParams();
-  const [searchParams] = useSearchParams();
-  const targetOwnerUid = searchParams.get('ownerUid');
   
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [originalOwnerUid, setOriginalOwnerUid] = useState<string | null>(null);
+  const [duplicateEmailError, setDuplicateEmailError] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [cardType, setCardType] = useState<'estatica' | 'dinamica'>('dinamica');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [availableCustomFields, setAvailableCustomFields] = useState<any[]>([]);
-  const [showPlans, setShowPlans] = useState(false);
+  const [hasExistingCards, setHasExistingCards] = useState(false);
+
+  useEffect(() => {
+    if (user && !user.isAnonymous) {
+      const checkExistingCards = async () => {
+        try {
+          const q = query(collection(db, 'cards'), where('ownerUid', '==', user.uid), limit(1));
+          const querySnapshot = await getDocs(q);
+          setHasExistingCards(!querySnapshot.empty);
+        } catch (error) {
+          console.error("Error checking existing cards:", error);
+        }
+      };
+      checkExistingCards();
+    }
+  }, [user]);
 
   const [formData, setFormData] = useState({
     identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '' },
@@ -34,7 +45,7 @@ export default function EditCard() {
       qrLogoUrl: '',
       showPhoto: true,
       showLogo: true,
-      primaryColor: '#000000',
+      primaryColor: '#D61E51', // Default brand color
       secondaryColor1: '#ffffff',
       secondaryColor2: '#f4f4f5'
     },
@@ -42,100 +53,29 @@ export default function EditCard() {
   });
 
   useEffect(() => {
-    const fetchCard = async () => {
-      if (!user) {
-        setInitialLoading(false);
-        return;
-      }
+    if (user && !user.isAnonymous && user.email) {
+      setFormData(prev => ({
+        ...prev,
+        contact: {
+          ...prev.contact,
+          email: user.email!
+        }
+      }));
+    }
+  }, [user]);
 
-      const isAdminUser = userRole === 'admin';
-      setIsAdmin(isAdminUser);
-
+  useEffect(() => {
+    const fetchFields = async () => {
       try {
-        // Fetch available custom fields
         const fieldsSnapshot = await getDocs(collection(db, 'customFields'));
         const fieldsData = fieldsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAvailableCustomFields(fieldsData);
-
-        if (!cardId) {
-          setInitialLoading(false);
-          return;
-        }
-
-        const decodedCardId = decodeURIComponent(cardId);
-        const docRef = doc(db, 'cards', decodedCardId);
-        const docSnap = await getDoc(docRef);
-        
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          
-          // Check permissions: owner or admin
-          if (data.ownerUid === user?.uid || isAdminUser) {
-            // Check if free user is trying to edit (allow anonymous users during session)
-            if (userRole === 'free' && !isAdminUser && !user.isAnonymous) {
-              alert("Los usuarios con plan gratuito no pueden editar sus tarjetas. Por favor, suscríbete para habilitar la edición.");
-              navigate(isAdminUser ? '/admin' : '/dashboard');
-              return;
-            }
-
-            setOriginalOwnerUid(data.ownerUid);
-            if (data.cardType) {
-              setCardType(data.cardType);
-            }
-            setFormData({
-              identity: {
-                firstName: data.identity?.firstName || '',
-                lastName: data.identity?.lastName || '',
-                company: data.identity?.company || '',
-                role: data.identity?.role || '',
-                photoUrl: data.identity?.photoUrl || ''
-              },
-              contact: {
-                mobile: data.contact?.mobile || '',
-                landline: data.contact?.landline || '',
-                email: data.contact?.email || '',
-                website: data.contact?.website || ''
-              },
-              context: { notes: data.context?.notes || '' },
-              address: {
-                street: data.address?.street || '',
-                zip: data.address?.zip || '',
-                city: data.address?.city || '',
-                province: data.address?.province || '',
-                country: data.address?.country || ''
-              },
-              social: {
-                linkedin: data.social?.linkedin || '',
-                instagram: data.social?.instagram || '',
-                twitter: data.social?.twitter || '',
-                tiktok: data.social?.tiktok || ''
-              },
-              customFields: data.customFields || [],
-              settings: {
-                qrLogo: data.settings?.qrLogo || false,
-                qrLogoUrl: data.settings?.qrLogoUrl || '',
-                showPhoto: data.settings?.showPhoto ?? true,
-                showLogo: data.settings?.showLogo ?? true,
-                primaryColor: data.settings?.primaryColor || '#000000',
-                secondaryColor1: data.settings?.secondaryColor1 || '#ffffff',
-                secondaryColor2: data.settings?.secondaryColor2 || '#f4f4f5'
-              },
-              status: data.status || 'active'
-            });
-          } else {
-            navigate(isAdminUser ? '/admin' : '/dashboard');
-          }
-        } else {
-          navigate(isAdminUser ? '/admin' : '/dashboard');
-        }
       } catch (error) {
-        console.error("Error fetching card", error);
-      } finally {
-        setInitialLoading(false);
+        console.error("Error fetching custom fields", error);
       }
     };
-    fetchCard();
-  }, [cardId, user, userRole, navigate]);
+    fetchFields();
+  }, []);
 
   const handleChange = (section: string, field: string, value: string) => {
     setFormData(prev => ({
@@ -182,7 +122,6 @@ export default function EditCard() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
           
-          // Compress to JPEG with 0.8 quality to keep it well under Firestore's 1MB limit
           const base64String = canvas.toDataURL('image/jpeg', 0.8);
           handleChange(section, field, base64String);
           setUploadingImage(false);
@@ -230,88 +169,125 @@ export default function EditCard() {
     setFormData({ ...formData, customFields: newCustomFields });
   };
 
-  const handleSubmit = async (e: React.FormEvent, targetPath?: string) => {
+  const handleSubmit = async (e: React.SyntheticEvent, targetPath?: string) => {
     e.preventDefault();
-    if (!user) return;
+    console.log("handleSubmit called", { user, formData });
+    
+    // Check if email is provided
+    const email = formData.contact.email.trim();
+    if (!email) {
+      alert("Por favor, introduce un correo electrónico.");
+      return;
+    }
+
     setLoading(true);
+    setDuplicateEmailError(false);
 
     try {
-      let id = cardId ? decodeURIComponent(cardId) : null;
-      if (!id) {
-        // Check if email is provided for new card
-        if (!formData.contact.email) {
-          alert("Por favor, introduce un correo electrónico.");
+      // 1. If no user, sign in anonymously now
+      if (!user) {
+        try {
+          await signInAnon();
+        } catch (e) {
+          console.error("Error signing in anonymously", e);
+          throw new Error("No se pudo iniciar sesión de forma anónima.");
+        }
+      }
+      
+      // Use auth.currentUser directly as the state might not have updated yet
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.warn("No user found in handleSubmit after sign-in");
+        throw new Error("No se encontró un usuario válido.");
+      }
+
+      // 2. Check if this email already has a card BEFORE creating (Skip for admins)
+      const isAdmin = userRole === 'admin';
+      if (!isAdmin) {
+        const q = query(collection(db, 'cards'), where('contact.email', '==', email), limit(1));
+        const querySnapshot = await getDocs(q);
+        
+        if (!querySnapshot.empty) {
+          setDuplicateEmailError(true);
           setLoading(false);
           return;
         }
-        // Generate ID: 8 random uppercase alphanumeric + email
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        let randomPart = '';
-        for (let i = 0; i < 8; i++) {
-          randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        id = randomPart;
       }
+      
+      // Generate ID: 8 random uppercase alphanumeric + email
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let randomPart = '';
+      for (let i = 0; i < 8; i++) {
+        randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      // ID sin email - solo alfanumérico
+      const id = randomPart;
       
       const cardRef = doc(db, 'cards', id);
       
       const payload = {
         id,
-        ownerUid: originalOwnerUid || (isAdmin && targetOwnerUid ? targetOwnerUid : user.uid),
-        isAnonymous: user.isAnonymous,
+        ownerUid: currentUser.uid,
+        isAnonymous: currentUser.isAnonymous,
         ownerRole: userRole,
         cardType,
         ...formData,
+        contact: {
+          ...formData.contact,
+          email: email // Use trimmed email
+        },
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
 
-      if (!cardId) {
-        (payload as any).createdAt = serverTimestamp();
+      await setDoc(cardRef, payload).catch(err => handleFirestoreError(err, OperationType.WRITE, `cards/${id}`));
+
+      // Sync company to user profile and update anonymous identifier
+      const userRef = doc(db, 'users', currentUser.uid);
+      const userUpdates: any = {
+        companyName: formData.identity.company,
+        updatedAt: serverTimestamp()
+      };
+
+      if (currentUser.isAnonymous) {
+        // Update anonymous identifier as requested: anon_+id+email
+        userUpdates.email = `anon_${currentUser.uid}_${email}`;
       }
 
-      await setDoc(cardRef, payload, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, `cards/${id}`));
+      await updateDoc(userRef, userUpdates).catch(err => {
+        console.warn("Could not update user profile", err);
+        // We don't throw here to not block the main flow if user profile update fails
+      });
 
-      // Sync company to user profile if registered
-      if (!user.isAnonymous) {
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, {
-          companyName: formData.identity.company,
-          updatedAt: serverTimestamp()
-        }).catch(err => console.warn("Could not update user company", err));
-      }
-
+      console.log("Navigation to target page", targetPath || `/success/${encodeURIComponent(id)}`);
       navigate(targetPath || `/success/${encodeURIComponent(id)}`);
     } catch (error) {
       console.error("Error saving card", error);
-      alert("Error al guardar la tarjeta. Revisa los permisos.");
+      alert("Error al guardar la tarjeta. Por favor, inténtalo de nuevo.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (initialLoading) return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
+  const handleContactSubmit = async (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    navigate('/enterprise-contact');
+  };
 
   return (
     <div className="min-h-screen bg-zinc-50 pb-20">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Logo />
-          
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <button onClick={() => navigate(isAdmin ? '/admin' : '/dashboard')} className="flex items-center gap-2 text-zinc-600 hover:text-zinc-900 font-medium mr-4">
-                <ArrowLeft className="w-5 h-5" />
-                Volver
-              </button>
-              <button
-                onClick={(e) => handleSubmit(e)}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {loading ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
+            <button
+              onClick={(e) => handleSubmit(e, '/dashboard')}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              {loading ? 'Guardando...' : 'Guardar'}
+            </button>
           </div>
         </div>
       </header>
@@ -337,6 +313,25 @@ export default function EditCard() {
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-8">
+          {duplicateEmailError && (
+            <div className="bg-red-50 border border-red-200 p-6 rounded-3xl mb-8 text-center animate-in fade-in slide-in-from-top-4 duration-300">
+              <p className="text-red-800 font-medium mb-4">
+                Ya tienes una tarjeta creada con este email. Solo se permite una tarjeta gratuita por email. ¿Quieres cambiar de plan?
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const element = document.getElementById('suscribete');
+                  element?.scrollIntoView({ behavior: 'smooth' });
+                  setDuplicateEmailError(false);
+                }}
+                className="px-6 py-2 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-colors shadow-lg shadow-brand-600/20"
+              >
+                Ver Planes
+              </button>
+            </div>
+          )}
+
           {/* Identity */}
           <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
             <div className="flex items-center gap-3 mb-8">
@@ -422,7 +417,17 @@ export default function EditCard() {
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                   <Mail className="w-4 h-4 text-brand-600" /> EMAIL CORPORATIVO
                 </label>
-                <input required type="email" value={formData.contact.email} onChange={e => handleChange('contact', 'email', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="javier@aidea.com" />
+                <input 
+                  type="email" 
+                  value={formData.contact.email} 
+                  onChange={e => handleChange('contact', 'email', e.target.value)} 
+                  readOnly={!!(user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards))}
+                  className={`w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300 ${user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards) ? 'bg-zinc-50 cursor-not-allowed' : ''}`}
+                  placeholder="javier@aidea.com" 
+                />
+                {user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards) && (
+                  <p className="mt-2 text-xs text-zinc-500">Este email está vinculado a tu cuenta de registro y no puede modificarse.</p>
+                )}
               </div>
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
@@ -458,7 +463,7 @@ export default function EditCard() {
               <textarea rows={3} value={formData.context.notes} onChange={e => handleChange('context', 'notes', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none resize-none text-zinc-700 placeholder:text-zinc-300" placeholder="(Tus productos, servicios, proyectos, networking...)" />
               <div className="flex justify-between mt-2">
                 <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">SÉ BREVE, TE LEERÁN MEJOR</span>
-                <span className="text-xs font-bold text-zinc-400">{(formData.context?.notes?.length || 0)}/100</span>
+                <span className="text-xs font-bold text-zinc-400">{formData.context.notes.length}/100</span>
               </div>
             </div>
           </section>
@@ -671,7 +676,7 @@ export default function EditCard() {
               disabled={loading}
               className="px-8 py-3 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-medium text-lg disabled:opacity-50"
             >
-              {loading ? 'Guardando...' : 'Guardar'}
+              {loading ? 'Guardando...' : 'Crear tarjeta y Qr'}
             </button>
           </div>
 
@@ -684,7 +689,7 @@ export default function EditCard() {
               </div>
               
               <div className="space-y-6">
-                {(!formData.customFields || formData.customFields.length === 0) ? (
+                {formData.customFields.length === 0 ? (
                   <p className="text-zinc-500 text-center italic py-4">Añade campos personalizados a tu tarjeta.</p>
                 ) : (
                   <div className="space-y-4">
@@ -716,27 +721,22 @@ export default function EditCard() {
 
                 {availableCustomFields.length > 0 && (
                   <div className="pt-4 border-t border-zinc-100">
-                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">Añadir campo extra:</p>
-                    <div className="flex gap-2">
-                      <select
-                        onChange={(e) => {
-                          const field = availableCustomFields.find(f => f.id === e.target.value);
-                          if (field) addCustomField(field);
-                          e.target.value = "";
-                        }}
-                        className="flex-1 px-4 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-brand-500 outline-none"
-                        defaultValue=""
-                      >
-                        <option value="" disabled>Selecciona un campo para añadir...</option>
-                        {availableCustomFields
-                          .filter(f => !formData.customFields?.find(cf => cf.id === f.id))
-                          .map(field => (
-                            <option key={field.id} value={field.id}>
-                              {field.label}
-                            </option>
-                          ))
-                        }
-                      </select>
+                    <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-4">Campos disponibles para añadir:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {availableCustomFields
+                        .filter(f => !formData.customFields.find(cf => cf.id === f.id))
+                        .map(field => (
+                          <button
+                            key={field.id}
+                            type="button"
+                            onClick={() => addCustomField(field)}
+                            className="px-4 py-2 bg-zinc-100 hover:bg-brand-50 hover:text-brand-600 text-zinc-700 rounded-xl text-sm font-bold transition-all flex items-center gap-2 border border-transparent hover:border-brand-200"
+                          >
+                            <Plus className="w-4 h-4" />
+                            {field.label}
+                          </button>
+                        ))
+                      }
                     </div>
                   </div>
                 )}
@@ -744,34 +744,64 @@ export default function EditCard() {
             </section>
           )}
 
-          {/* Subscription Section */}
-          <section id="suscribete" className="mt-12 bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
-            <h3 className="text-2xl font-bold text-zinc-900 mb-6 text-center">Gestión de Plan</h3>
-            
-            <div className="flex flex-col items-center gap-4 py-8 text-center">
-              <p className="text-zinc-600 mb-4">
-                {userRole === 'free' 
-                  ? 'Actualmente estás en el plan gratuito. Suscríbete para desbloquear todas las funcionalidades.'
-                  : '¿Quieres cambiar o gestionar tu plan actual?'}
-              </p>
-              <button 
-                type="button"
-                onClick={() => {
-                  const plansSection = document.getElementById('planes');
-                  if (plansSection) {
-                    plansSection.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    navigate('/#planes');
-                  }
-                }}
-                className="px-8 py-4 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
-              >
-                Ver Planes de Suscripción
-              </button>
-            </div>
-          </section>
+          {/* Subscription Section (Hide for admins) */}
+          {userRole !== 'admin' && (
+            <section id="suscribete" className="mt-12 bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <h3 className="text-2xl font-bold text-zinc-900 mb-6 text-center">¿Necesitas un plan mejor? ¡Suscríbete!</h3>
+              <div className="grid md:grid-cols-3 gap-6">
+                {/* Standard */}
+                <div className="p-6 border border-zinc-100 rounded-2xl bg-zinc-50 flex flex-col">
+                  <h4 className="font-bold text-lg mb-2">Estándar</h4>
+                  <p className="text-2xl font-bold text-brand-600 mb-1">1,50€<span className="text-sm text-zinc-500 font-normal">/mes</span></p>
+                  <p className="text-xs text-zinc-400 mb-4">IVA NO INCLUIDO</p>
+                  <ul className="text-sm text-zinc-600 space-y-2 mb-6 flex-1">
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Landing page personalizada</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Modificación ilimitada</li>
+                  </ul>
+                  <button type="button" onClick={() => navigate('/crear')} className="w-full py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition-colors">
+                    Suscribirse (Pasarela de pago)
+                  </button>
+                </div>
+
+                {/* Premium */}
+                <div className="p-6 border-2 border-brand-600 rounded-2xl bg-white flex flex-col relative">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    Más Popular
+                  </div>
+                  <h4 className="font-bold text-lg mb-2">Premium</h4>
+                  <p className="text-2xl font-bold text-brand-600 mb-1">2,50€<span className="text-sm text-zinc-500 font-normal">/mes</span></p>
+                  <p className="text-xs text-zinc-400 mb-4">IVA NO INCLUIDO</p>
+                  <ul className="text-sm text-zinc-600 space-y-2 mb-6 flex-1">
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Todo lo del plan estándar</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Creación de varias tarjetas</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Compartir tarjeta online</li>
+                  </ul>
+                  <button type="button" onClick={() => navigate('/crear')} className="w-full py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors">
+                    Suscribirse (Pasarela de pago)
+                  </button>
+                </div>
+
+                {/* Enterprise */}
+                <div className="p-6 border border-zinc-100 rounded-2xl bg-zinc-50 flex flex-col">
+                  <h4 className="font-bold text-lg mb-2">Empresa/Usuario</h4>
+                  <p className="text-2xl font-bold text-zinc-900 mb-1">A medida</p>
+                  <p className="text-xs text-zinc-400 mb-4">IVA NO INCLUIDO</p>
+                  <ul className="text-sm text-zinc-600 space-y-2 mb-6 flex-1">
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Todo lo que el resto de planes</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Gestión de equipos</li>
+                    <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Control corporativo</li>
+                  </ul>
+                  <button type="button" onClick={() => navigate('/enterprise-contact')} className="w-full py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition-colors text-center">
+                    Contactar con ventas
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </form>
       </main>
+
+      {/* Success Modal removed as it's now on the separate page */}
     </div>
   );
 }

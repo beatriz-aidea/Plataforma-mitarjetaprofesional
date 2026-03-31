@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Logo from '../components/Logo';
 import { QrCode, Smartphone, Building2, CheckCircle2, X, Mail } from 'lucide-react';
 
 export default function Landing() {
-  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, signInAnon } = useAuth();
   const navigate = useNavigate();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
@@ -65,10 +66,11 @@ export default function Landing() {
     try {
       if (isLogin) {
         await signInWithEmail(email, password);
+        navigate('/dashboard');
       } else {
         await signUpWithEmail(email, password);
+        navigate('/elegir-plan');
       }
-      navigate('/dashboard');
     } catch (error: any) {
       console.error("Auth failed", error);
       if (error.code === 'auth/email-already-in-use') {
@@ -102,10 +104,7 @@ export default function Landing() {
     <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
-            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
-            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
-          </div>
+          <Logo />
           <button
             onClick={openAuthModal}
             className="px-4 py-2 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 transition-colors"
@@ -119,16 +118,23 @@ export default function Landing() {
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 relative shadow-xl">
-            <button 
-              onClick={() => { setShowAuthModal(false); setIsResetPassword(false); setAuthError(''); setAuthSuccess(''); }}
-              className="absolute top-4 right-4 text-zinc-400 hover:text-zinc-600"
+            <button
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors text-xl font-bold"
             >
-              <X className="w-6 h-6" />
+              ✕
             </button>
             
             <h2 className="text-2xl font-bold text-center mb-6">
               {isResetPassword ? 'Recuperar Contraseña' : (isLogin ? 'Iniciar Sesión' : 'Crear Cuenta')}
             </h2>
+
+            {isLogin && !isResetPassword && (
+              <div className="mb-6 p-4 bg-brand-50 border border-brand-100 rounded-xl text-sm text-brand-800">
+                <p className="font-medium mb-1">¿Ya tienes una tarjeta gratuita?</p>
+                <p>Si creaste una tarjeta gratuita y quieres suscribirte, introduce tu email y pulsa <strong>¿Olvidaste tu contraseña?</strong> para crear tu acceso.</p>
+              </div>
+            )}
 
             {!isResetPassword && (
               <>
@@ -240,10 +246,15 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <button
               onClick={() => {
-                if (user) {
-                  navigate('/dashboard');
+                if (window.location.hostname.includes('mitarjetaprofesional.app')) {
+                  navigate('/crear');
                 } else {
-                  window.location.href = 'https://mitarjetaprofesional.com';
+                  if (user) {
+                    navigate('/dashboard');
+                  } else {
+                    setIsLogin(false);
+                    setShowAuthModal(true);
+                  }
                 }
               }}
               className="px-8 py-4 bg-brand-600 text-white text-lg font-semibold rounded-xl hover:bg-brand-700 transition-colors w-full sm:w-auto"
@@ -295,60 +306,92 @@ export default function Landing() {
             <p className="text-zinc-600">Elige la opción que mejor encaje con tus necesidades profesionales.</p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-8">
             {/* Free */}
             <div className="bg-white rounded-3xl p-8 border border-zinc-200 shadow-sm flex flex-col">
               <h3 className="text-xl font-semibold mb-2">Gratuito</h3>
-              <div className="text-4xl font-bold mb-6">0€<span className="text-lg text-zinc-500 font-normal">/mes</span></div>
+              <div className="text-4xl font-bold mb-1 text-zinc-900">0€<span className="text-lg text-zinc-500 font-normal">/mes</span></div>
+              <p className="text-xs text-zinc-400 mb-6">IVA NO INCLUIDO</p>
               <ul className="space-y-4 mb-8 flex-1">
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Generación de QR básico</span></li>
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Enlace público</span></li>
                 <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Opción de pedir tarjeta física (pago único)</span></li>
               </ul>
-              <button onClick={openAuthModal} className="w-full py-3 rounded-xl font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors">
+              <button onClick={() => navigate('/crear')} className="w-full py-3 rounded-xl font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors mt-auto">
                 Empezar gratis
               </button>
             </div>
 
-            {/* Pro */}
+            {/* Standard */}
+            <div className="bg-white rounded-3xl p-8 border border-zinc-200 shadow-sm flex flex-col">
+              <h3 className="text-xl font-semibold mb-2 text-zinc-900">Usuario Estándar</h3>
+              <div className="text-4xl font-bold mb-1 text-zinc-900">1,50€<span className="text-lg text-zinc-500 font-normal">/mes</span></div>
+              <p className="text-xs text-zinc-400 mb-2">IVA NO INCLUIDO</p>
+              <p className="text-zinc-500 text-sm mb-6">Facturado anualmente (18€/año)</p>
+              <ul className="space-y-4 mb-8 flex-1">
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Todo lo del plan gratuito</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Landing page personalizada</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Modificación de datos ilimitada</span></li>
+              </ul>
+              <button onClick={() => navigate('/crear')} className="w-full py-3 rounded-xl font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors mt-auto">
+                Suscribirse
+              </button>
+            </div>
+
+            {/* Premium */}
             <div className="bg-zinc-900 rounded-3xl p-8 border border-zinc-900 shadow-xl flex flex-col relative transform md:-translate-y-4">
               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-500 text-white px-4 py-1 rounded-full text-sm font-medium">
                 Más popular
               </div>
               <h3 className="text-xl font-semibold mb-2 text-white">Usuario Premium</h3>
-              <div className="text-4xl font-bold mb-6 text-white">1,50€<span className="text-lg text-zinc-400 font-normal">/mes</span></div>
-              <p className="text-zinc-400 text-sm mb-6">Facturado anualmente (18€/año)</p>
+              <div className="text-4xl font-bold mb-1 text-white">2,50€<span className="text-lg text-zinc-400 font-normal">/mes</span></div>
+              <p className="text-xs text-zinc-400 mb-2">IVA NO INCLUIDO</p>
+              <p className="text-zinc-400 text-sm mb-6">Facturado anualmente (30€/año)</p>
               <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Todo lo del plan gratuito</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Landing page personalizada</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Modificación de datos ilimitada</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Todo lo del plan estándar</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Creación de varias tarjetas</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Compartir tarjeta online</span></li>
+                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-brand-400 shrink-0" /><span className="text-zinc-300">Añadir a wallet (Próximamente)</span></li>
               </ul>
-              <button onClick={openAuthModal} className="w-full py-3 rounded-xl font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors">
+              <button onClick={() => navigate('/crear')} className="w-full py-3 rounded-xl font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors mt-auto">
                 Suscribirse
               </button>
             </div>
+          </div>
 
-            {/* Enterprise */}
-            <div className="bg-white rounded-3xl p-8 border border-zinc-200 shadow-sm flex flex-col">
-              <h3 className="text-xl font-semibold mb-2">Empresa</h3>
-              <div className="text-4xl font-bold mb-6">A medida</div>
-              <ul className="space-y-4 mb-8 flex-1">
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Gestión centralizada de empleados</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Diseño corporativo unificado</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Control de accesos y permisos</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Analítica de escaneos</span></li>
-                <li className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Enlaces interactivos personalizados</span></li>
-              </ul>
-              <button className="w-full py-3 rounded-xl font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors">
-                Contactar ventas
-              </button>
+          {/* Enterprise */}
+          <div className="max-w-5xl mx-auto">
+            <div className="bg-white rounded-3xl p-8 border border-zinc-200 shadow-sm flex flex-col md:flex-row items-center gap-8">
+              <div className="flex-1">
+                <h3 className="text-2xl font-bold mb-2">Empresa / Usuario</h3>
+                <p className="text-zinc-600 mb-6">La solución definitiva para equipos y organizaciones que necesitan control total.</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600 font-bold">Todo lo que el resto de planes</span></div>
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Creación de acceso corporativo</span></div>
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Gestión de equipo/empleados centralizado</span></div>
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Control de accesos y permisos corporativo</span></div>
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Enlaces/campos personalizados</span></div>
+                  <div className="flex items-start gap-3"><CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /><span className="text-zinc-600">Analítica de escaneos (Próximamente)</span></div>
+                </div>
+              </div>
+              <div className="w-full md:w-auto flex flex-col items-center justify-center shrink-0">
+                <div className="text-3xl font-bold mb-2 text-center">A medida</div>
+                <p className="text-xs text-zinc-400 mb-6">IVA NO INCLUIDO</p>
+                <button 
+                  onClick={() => navigate('/enterprise-contact')}
+                  className="w-full md:w-auto px-8 py-4 rounded-xl font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition-colors text-center"
+                >
+                  Contactar ventas
+                </button>
+              </div>
             </div>
           </div>
         </section>
       </main>
 
       <footer className="bg-white border-t border-zinc-200 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-zinc-500">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center gap-6 text-zinc-500">
+          <Logo className="h-8" />
           <p>© {new Date().getFullYear()} AIDEA VCARD. Todos los derechos reservados.</p>
         </div>
       </footer>

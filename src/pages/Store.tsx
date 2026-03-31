@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
 import CardTemplate from '../components/CardTemplate';
+import Logo from '../components/Logo';
 import { QRCodeSVG } from 'qrcode.react';
 
 const CATEGORIES = [
@@ -198,6 +199,7 @@ export default function Store() {
   };
 
   const [selectedFields, setSelectedFields] = useState<Record<string, boolean>>({
+    logo: true,
     firstName: true,
     lastName: true,
     role: true,
@@ -240,11 +242,8 @@ export default function Store() {
             <ArrowLeft className="w-5 h-5" />
             Volver
           </button>
-          <div className="flex items-center gap-3 font-semibold text-zinc-900 cursor-pointer" onClick={() => navigate('/')}>
-            <img src="/logoQr.svg" alt="AIDEA Logo" className="h-8" />
-            <img src="/AIDEA_VCARD.svg" alt="AIDEA VCARD" className="h-8" />
-            <span className="ml-2">Tienda de Tarjetas Físicas</span>
-          </div>
+          <Logo className="h-8" />
+          <span className="ml-2 font-semibold text-zinc-900">Tienda de Tarjetas Físicas</span>
         </div>
       </header>
 
@@ -446,7 +445,7 @@ export default function Store() {
                                     <CardTemplate 
                                       templateId={design.templateId} 
                                       color={corporateColor} 
-                                      logo={logoPreview}
+                                      logo={selectedFields.logo ? logoPreview : undefined}
                                       data={templateData} 
                                     />
                                   </div>
@@ -479,6 +478,7 @@ export default function Store() {
                           <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               {Object.entries({
+                                logo: 'Logo / Foto',
                                 firstName: 'Nombre',
                                 lastName: 'Apellidos',
                                 mobile: 'Móvil',
@@ -730,7 +730,7 @@ export default function Store() {
                           <CardTemplate 
                             templateId={selectedDesign.templateId} 
                             color={corporateColor} 
-                            logo={logoPreview}
+                            logo={selectedFields.logo ? logoPreview : undefined}
                             data={templateData} 
                           />
                         )}
