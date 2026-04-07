@@ -68,7 +68,7 @@ export default function Dashboard() {
     alert('Funcionalidad de Wallet en desarrollo. Próximamente podrás descargar tu pase para Apple Wallet y Google Wallet.');
   };
 
-  if ((userRole === 'free' || userRole === 'pending') && !isAdmin) {
+  if ((userRole === 'free' || userRole === 'pending') && !isAdmin && !(userRole === 'free' && sessionStorage.getItem('justCreatedCard') === 'true')) {
     if (loading) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -93,6 +93,9 @@ export default function Dashboard() {
           )}
           {firstCard && (
             <button onClick={() => navigate(`/c/${encodeURIComponent(firstCard.id)}`)} className="px-6 py-3 border-2 border-brand-600 text-brand-600 font-semibold rounded-xl hover:bg-brand-50 transition-colors">Ver mi tarjeta</button>
+          )}
+          {userRole === 'free' && firstCard && (
+            <button onClick={() => navigate('/store')} className="px-6 py-3 bg-zinc-900 text-white font-semibold rounded-xl hover:bg-zinc-800 transition-colors">Pedir tarjeta física</button>
           )}
           <button onClick={signOut} className="px-6 py-3 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-100 transition-colors">Cerrar sesión</button>
         </div>
