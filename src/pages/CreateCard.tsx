@@ -7,7 +7,7 @@ import { doc, setDoc, getDocs, collection, serverTimestamp, updateDoc, query, wh
 import { ArrowLeft, Save, Upload, Lock, Smartphone, User, Phone, Users, MapPin, Share2, Palette, QrCode, Briefcase, Mail, Globe, Check, MessageCircle, Plus, Trash2, ExternalLink } from 'lucide-react';
 
 export default function CreateCard() {
-  const { user, userRole, signInAnon } = useAuth();
+  const { user, userRole, companyId, signInAnon } = useAuth();
   const navigate = useNavigate();
   
   const [loading, setLoading] = useState(false);
@@ -680,8 +680,8 @@ export default function CreateCard() {
             </button>
           </div>
 
-          {/* More Data for Premium/Enterprise */}
-          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin') && (
+          {/* More Data for Premium/Enterprise/Company */}
+          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || !!companyId) && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm mb-8">
               <div className="flex items-center gap-3 mb-8">
                 <Users className="w-6 h-6 text-brand-600" />

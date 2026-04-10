@@ -40,6 +40,15 @@ service cloud.firestore {
       );
     }
     
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.uid == "IekQHWYb1Ja2S7JB62th04pJkyZ2" ||
+        request.auth.token.email == "beatriz@aidea.es" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+    
     // Domain Validators
     function isValidUser() {
       return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'updatedAt', 'companyId', 'companyName', 'isAnonymous']) &&
@@ -95,6 +104,14 @@ service cloud.firestore {
              request.resource.data.label is string &&
              request.resource.data.type in ['text', 'url', 'email', 'phone'] &&
              (!('icon' in request.resource.data) || request.resource.data.icon is string);
+    }
+
+    function isValidFieldTemplate() {
+      return hasRequiredFields(['sector', 'name', 'icon', 'fields']) &&
+             request.resource.data.sector is string &&
+             request.resource.data.name is string &&
+             request.resource.data.icon is string &&
+             request.resource.data.fields is list;
     }
 
     // ===============================================================
@@ -155,6 +172,13 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidCustomField();
       allow update: if isAdmin() && isValidCustomField();
       allow delete: if isAdmin();
+    }
+
+    match /fieldTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create: if isSuperAdmin() && isValidFieldTemplate();
+      allow update: if isSuperAdmin() && isValidFieldTemplate();
+      allow delete: if isSuperAdmin();
     }
   }
 }

@@ -6,6 +6,7 @@ import { auth, db, googleProvider } from '../firebase';
 interface AuthContextType {
   user: User | null;
   userRole: string;
+  companyId: string | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [userRole, setUserRole] = useState<string>('free');
+  const [companyId, setCompanyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,12 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               createdAt: serverTimestamp()
             });
             setUserRole(initialRole);
+            setCompanyId(null);
           } catch (error) {
             console.error("Error creating user document:", error);
           }
         } else {
           const data = userSnap.data();
           console.log("AuthContext: User document found for UID:", currentUser.uid, "with role:", data.role);
+          setCompanyId(data.companyId || null);
           // If Beatriz already exists but doesn't have admin role, update it
           if (currentUser.email === 'beatriz@aidea.es' && data.role !== 'admin') {
             try {
@@ -89,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         setUserRole('free');
+        setCompanyId(null);
       }
       setUser(currentUser);
       setLoading(false);
@@ -155,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, userRole, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, signInAnon, resetPassword, signOut }}>
+    <AuthContext.Provider value={{ user, userRole, companyId, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, signInAnon, resetPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );

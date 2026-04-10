@@ -69,13 +69,30 @@ export default function Store() {
   const [customDesignImage, setCustomDesignImage] = useState<string | null>(null);
   const [selectedDesign, setSelectedDesign] = useState(DESIGNS[0]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [qrLogoPreview, setQrLogoPreview] = useState<string | null>(null);
   const [corporateColor, setCorporateColor] = useState<string>('#d60b52');
   
   const [step, setStep] = useState(1);
+  const [billingType, setBillingType] = useState<'autonomo' | 'empresa'>('autonomo');
+  const [billing, setBilling] = useState({
+    firstName: '', lastName: '', company: '', nif: '', street: '', city: '', province: '', zip: '', country: '', phone: ''
+  });
+  const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true);
   const [shipping, setShipping] = useState({
-    fullName: '', street: '', city: '', province: '', zip: '', country: ''
+    fullName: '', company: '', street: '', city: '', province: '', zip: '', phone: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleCopyFromCard = () => {
+    if (activeCardData) {
+      setBilling(prev => ({
+        ...prev,
+        firstName: activeCardData.identity?.firstName || '',
+        lastName: activeCardData.identity?.lastName || '',
+        company: activeCardData.identity?.company || ''
+      }));
+    }
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -105,64 +122,43 @@ export default function Store() {
     fetchData();
   }, [user]);
 
-  const compressImage = (file: File, callback: (dataUrl: string) => void) => {
-    if (file.size > 5 * 1024 * 1024) {
-      alert('El archivo es demasiado grande. Máximo 5MB.');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (file.type === 'application/pdf') {
-        callback(reader.result as string);
-        return;
-      }
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1024;
-        const MAX_HEIGHT = 1024;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          // Fill with white background in case of transparent PNG being converted to JPEG
-          // But actually, let's just use PNG if the original is PNG, otherwise JPEG
-          const isPng = file.type === 'image/png';
-          if (!isPng) {
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
-          }
-          ctx.drawImage(img, 0, 0, width, height);
-          callback(canvas.toDataURL(isPng ? 'image/png' : 'image/jpeg', 0.8));
-        }
-      };
-      img.src = reader.result as string;
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) compressImage(file, setLogoPreview);
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('El archivo es demasiado grande. Máximo 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setLogoPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleQrLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('El archivo es demasiado grande. Máximo 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setQrLogoPreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleCustomDesignUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) compressImage(file, setCustomDesignImage);
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('El archivo es demasiado grande. Máximo 10MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setCustomDesignImage(reader.result as string);
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleCheckout = async (e: React.FormEvent) => {
@@ -183,9 +179,12 @@ export default function Store() {
         design: selectedProduct.isCard ? (designMode === 'template' ? selectedDesign.id : 'custom') : null,
         corporateColor: selectedProduct.isCard ? corporateColor : null,
         logoUrl: selectedProduct.isCard && designMode === 'template' ? (logoPreview || '') : '', 
+        qrLogoUrl: selectedProduct.isCard ? (qrLogoPreview || '') : '',
         customDesignUrl: selectedProduct.isCard && designMode === 'custom' ? (customDesignImage || '') : '',
         status: 'paid',
-        shippingAddress: shipping,
+        billingAddress: billing,
+        billingType: billingType,
+        shippingAddress: shippingSameAsBilling ? billing : shipping,
         createdAt: serverTimestamp()
       });
       
@@ -243,7 +242,7 @@ export default function Store() {
             Volver
           </button>
           <Logo className="h-8" />
-          <span className="ml-2 font-semibold text-zinc-900">Tienda de Tarjetas Físicas</span>
+          <span className="ml-2 font-semibold text-zinc-900">Tienda</span>
         </div>
       </header>
 
@@ -440,13 +439,32 @@ export default function Store() {
                                 onClick={() => setSelectedDesign(design)}
                                 className={`relative rounded-xl border-2 text-center transition-all overflow-hidden bg-white ${selectedDesign.id === design.id ? 'border-brand-600 ring-2 ring-brand-600/20' : 'border-zinc-200 hover:border-zinc-300'}`}
                               >
-                                <div className="w-full aspect-[1.58] relative pointer-events-none">
-                                  <div className="absolute inset-0 origin-top-left" style={{ transform: 'scale(0.35)', width: '285%', height: '285%' }}>
-                                    <CardTemplate 
-                                      templateId={design.templateId} 
-                                      color={corporateColor} 
+                                <div className="w-full aspect-[1.58] relative pointer-events-none overflow-hidden">
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      width: '340px',
+                                      height: '215px',
+                                      transformOrigin: 'top left',
+                                      transform: `scale(var(--thumb-scale))`,
+                                    }}
+                                    ref={(el) => {
+                                      if (el) {
+                                        const parent = el.parentElement;
+                                        if (parent) {
+                                          const scale = parent.offsetWidth / 340;
+                                          el.style.setProperty('--thumb-scale', String(scale));
+                                        }
+                                      }
+                                    }}
+                                  >
+                                    <CardTemplate
+                                      templateId={design.templateId}
+                                      color={corporateColor}
                                       logo={selectedFields.logo ? logoPreview : undefined}
-                                      data={templateData} 
+                                      data={templateData}
                                     />
                                   </div>
                                 </div>
@@ -469,7 +487,7 @@ export default function Store() {
                             />
                             <Upload className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
                             <p className="text-sm text-zinc-600">Haz clic o arrastra tu logo aquí</p>
-                            <p className="text-xs text-zinc-400 mt-1">PNG, JPG o SVG (Max. 5MB)</p>
+                            <p className="text-xs text-zinc-400 mt-1">Formatos recomendados: JPG, PNG. Tamaño máximo: 5MB.</p>
                           </div>
                         </div>
 
@@ -544,7 +562,7 @@ export default function Store() {
                             />
                             <Upload className="w-10 h-10 text-zinc-400 mx-auto mb-3" />
                             <p className="text-sm font-medium text-zinc-900 mb-1">Haz clic para subir o tomar una foto</p>
-                            <p className="text-xs text-zinc-500">Formato horizontal recomendado (85x55mm)</p>
+                            <p className="text-xs text-zinc-500">Formatos recomendados: JPG, PNG. Tamaño máximo: 5MB.<br/>Para diseños completos, usar proporciones 85x54mm.</p>
                           </div>
                         </div>
                         <div>
@@ -571,6 +589,23 @@ export default function Store() {
                       </div>
                     ) : null}
 
+                    {selectedProduct.isCard && (
+                      <div className="pt-6 border-t border-zinc-200 mt-6">
+                        <label className="block text-sm font-medium text-zinc-700 mb-2">Logo para el QR / Isotipo (Opcional)</label>
+                        <div className="border-2 border-dashed border-zinc-300 rounded-xl p-6 text-center hover:bg-zinc-50 transition-colors relative">
+                          <input 
+                            type="file" 
+                            accept="image/jpeg, image/png, image/svg+xml" 
+                            onChange={handleQrLogoUpload}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                          <Upload className="w-8 h-8 text-zinc-400 mx-auto mb-2" />
+                          <p className="text-sm font-medium text-zinc-900 mb-1">Sube el isotipo para el QR</p>
+                          <p className="text-xs text-zinc-500">Se integrará en el centro del código QR sin deformar.</p>
+                        </div>
+                      </div>
+                    )}
+
                     <button 
                       onClick={() => setStep(2)}
                       disabled={selectedProduct.isCard && designMode === 'custom' && !customDesignImage}
@@ -586,38 +621,135 @@ export default function Store() {
               <section className={`bg-white p-6 rounded-2xl border ${step === 2 ? 'border-brand-500 shadow-md' : 'border-zinc-200 opacity-60'}`}>
                 <h2 className="text-xl font-bold text-zinc-900 mb-6 flex items-center gap-3">
                   <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-sm">2</span>
-                  Datos de Envío
+                  Datos Facturación/Envío
                 </h2>
                 
                 {step === 2 && (
-                  <form onSubmit={(e) => { e.preventDefault(); setStep(3); }} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre Completo</label>
-                      <input required type="text" value={shipping.fullName} onChange={e => setShipping({...shipping, fullName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                  <form onSubmit={(e) => { e.preventDefault(); setStep(3); }} className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-zinc-900">Datos de Facturación</h3>
+                        {activeCardData && (
+                          <button type="button" onClick={handleCopyFromCard} className="text-sm text-brand-600 font-medium hover:text-brand-700">
+                            (Copiar datos de la tarjeta)
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="flex gap-4 mb-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="radio" name="billingType" checked={billingType === 'autonomo'} onChange={() => setBillingType('autonomo')} className="text-brand-600 focus:ring-brand-500" />
+                          <span className="text-sm font-medium text-zinc-700">Autónomo</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="radio" name="billingType" checked={billingType === 'empresa'} onChange={() => setBillingType('empresa')} className="text-brand-600 focus:ring-brand-500" />
+                          <span className="text-sm font-medium text-zinc-700">Empresa</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre {billingType === 'empresa' && '(Opcional)'}</label>
+                          <input required={billingType === 'autonomo'} type="text" value={billing.firstName} onChange={e => setBilling({...billing, firstName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Apellidos {billingType === 'empresa' && '(Opcional)'}</label>
+                          <input required={billingType === 'autonomo'} type="text" value={billing.lastName} onChange={e => setBilling({...billing, lastName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa {billingType === 'autonomo' && '(Opcional)'}</label>
+                          <input required={billingType === 'empresa'} type="text" value={billing.company} onChange={e => setBilling({...billing, company: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">NIF/CIF</label>
+                          <input required type="text" value={billing.nif} onChange={e => setBilling({...billing, nif: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-700 mb-1">Dirección</label>
+                        <input required type="text" value={billing.street} onChange={e => setBilling({...billing, street: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Código Postal</label>
+                          <input required type="text" value={billing.zip} onChange={e => setBilling({...billing, zip: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Población</label>
+                          <input required type="text" value={billing.city} onChange={e => setBilling({...billing, city: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Provincia</label>
+                          <input required type="text" value={billing.province} onChange={e => setBilling({...billing, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">País</label>
+                          <input required type="text" value={billing.country} onChange={e => setBilling({...billing, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
+                        <input required type="tel" value={billing.phone} onChange={e => setBilling({...billing, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-zinc-700 mb-1">Dirección</label>
-                      <input required type="text" value={shipping.street} onChange={e => setShipping({...shipping, street: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Ciudad</label>
-                        <input required type="text" value={shipping.city} onChange={e => setShipping({...shipping, city: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+
+                    <div className="pt-6 border-t border-zinc-200 space-y-4">
+                      <h3 className="text-lg font-semibold text-zinc-900">Datos de Envío</h3>
+                      <div className="flex gap-4 mb-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="radio" checked={shippingSameAsBilling} onChange={() => setShippingSameAsBilling(true)} className="text-brand-600 focus:ring-brand-500" />
+                          <span className="text-sm font-medium text-zinc-700">Igual que facturación</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="radio" checked={!shippingSameAsBilling} onChange={() => setShippingSameAsBilling(false)} className="text-brand-600 focus:ring-brand-500" />
+                          <span className="text-sm font-medium text-zinc-700">Otros</span>
+                        </label>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Provincia</label>
-                        <input required type="text" value={shipping.province} onChange={e => setShipping({...shipping, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Código Postal</label>
-                        <input required type="text" value={shipping.zip} onChange={e => setShipping({...shipping, zip: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">País</label>
-                        <input required type="text" value={shipping.country} onChange={e => setShipping({...shipping, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
-                      </div>
+
+                      {!shippingSameAsBilling && (
+                        <div className="space-y-4 p-4 bg-zinc-50 rounded-xl border border-zinc-200">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre</label>
+                              <input required type="text" value={shipping.fullName} onChange={e => setShipping({...shipping, fullName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa</label>
+                              <input type="text" value={shipping.company} onChange={e => setShipping({...shipping, company: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-zinc-700 mb-1">Dirección</label>
+                            <input required type="text" value={shipping.street} onChange={e => setShipping({...shipping, street: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Código Postal</label>
+                              <input required type="text" value={shipping.zip} onChange={e => setShipping({...shipping, zip: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Población</label>
+                              <input required type="text" value={shipping.city} onChange={e => setShipping({...shipping, city: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Provincia</label>
+                              <input required type="text" value={shipping.province} onChange={e => setShipping({...shipping, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
+                              <input required type="tel" value={shipping.phone} onChange={e => setShipping({...shipping, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     
                     <div className="flex gap-4 pt-4">
@@ -713,12 +845,9 @@ export default function Store() {
                         {designMode === 'custom' ? (
                           customDesignImage ? (
                             customDesignImage.startsWith('data:application/pdf') ? (
-                              <div className="flex flex-col items-center justify-center w-full h-full bg-zinc-100 text-zinc-600">
-                                <FileText className="w-12 h-12 mb-2 text-brand-500" />
-                                <span className="text-sm font-medium">Diseño PDF Subido</span>
-                              </div>
+                              <embed src={customDesignImage} type="application/pdf" className="w-full h-full rounded-2xl" />
                             ) : (
-                              <img src={customDesignImage} alt="Tu diseño" className="w-full h-full object-cover" />
+                              <img src={customDesignImage} alt="Tu diseño" className="w-full h-full object-cover" style={{ imageOrientation: 'from-image' }} />
                             )
                           ) : (
                             <div className="text-zinc-400 flex flex-col items-center">
@@ -755,8 +884,13 @@ export default function Store() {
                             level="H" 
                             includeMargin={false}
                             imageSettings={
-                              activeCardData?.settings?.qrLogo && activeCardData?.settings?.qrLogoUrl 
-                                ? { src: activeCardData.settings.qrLogoUrl, height: 20, width: 20, excavate: true } 
+                              qrLogoPreview || (activeCardData?.settings?.qrLogo && activeCardData?.settings?.qrLogoUrl)
+                                ? { 
+                                    src: qrLogoPreview || activeCardData.settings.qrLogoUrl, 
+                                    height: 24, 
+                                    width: 24, 
+                                    excavate: true 
+                                  } 
                                 : undefined
                             }
                           />
