@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             
             await setDoc(userRef, {
               uid: currentUser.uid,
-              email: currentUser.email || `anon_${currentUser.uid}`,
+              email: currentUser.email || '',
               role: initialRole,
               isAnonymous: currentUser.isAnonymous,
               createdAt: serverTimestamp()
@@ -104,6 +104,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
+      if (auth.currentUser?.isAnonymous) {
+        await auth.signOut();
+      }
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
       console.error('Error signing in with Google', error);
@@ -113,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = async (email: string, pass: string) => {
     try {
+      if (auth.currentUser?.isAnonymous) {
+        await auth.signOut();
+      }
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (error) {
       console.error('Error signing in with email', error);
@@ -122,6 +128,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = async (email: string, pass: string) => {
     try {
+      if (auth.currentUser?.isAnonymous) {
+        await auth.signOut();
+      }
       await createUserWithEmailAndPassword(auth, email, pass);
     } catch (error) {
       console.error('Error signing up with email', error);

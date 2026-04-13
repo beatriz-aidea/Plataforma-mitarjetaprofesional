@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import Logo from '../components/Logo';
 import { doc, getDoc, setDoc, getDocs, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { ArrowLeft, Save, Upload, Lock, Smartphone, User, Phone, Users, MapPin, Share2, Palette, QrCode, Briefcase, Mail, Globe, Check, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Save, Upload, Lock, Smartphone, User, Phone, Users, MapPin, Share2, Palette, QrCode, Briefcase, Mail, Globe, Check, Plus, Trash2, ExternalLink, Building2 } from 'lucide-react';
 
 export default function EditCard() {
   const { user, userRole, companyId } = useAuth();
@@ -23,7 +23,7 @@ export default function EditCard() {
   const [showPlans, setShowPlans] = useState(false);
 
   const [formData, setFormData] = useState({
-    identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '' },
+    identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '', companyLogoUrl: '' },
     contact: { mobile: '', landline: '', email: '', website: '' },
     context: { notes: '' },
     address: { street: '', zip: '', city: '', province: '', country: '' },
@@ -396,6 +396,33 @@ export default function EditCard() {
                   </div>
                 </div>
               )}
+
+              <div className="sm:col-span-2">
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                  <Building2 className="w-4 h-4 text-brand-600" /> Logotipo de Empresa
+                  </label>
+                  <p className="text-xs text-zinc-400 mb-2">Imagen horizontal de tu empresa (distinta de la foto de perfil)</p>
+                  <div className="flex items-center gap-4">
+                    {formData.identity.companyLogoUrl && (
+                      <img src={formData.identity.companyLogoUrl} alt="Logo empresa" className="h-12 w-auto max-w-[120px] object-contain border border-zinc-200 rounded-lg p-1" />
+                    )}
+                    <div className="flex-1">
+                      <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-2xl hover:border-brand-600 hover:bg-red-50 transition-colors cursor-pointer">
+                        <Upload className="w-5 h-5 text-zinc-500" />
+                        <span className="text-sm font-medium text-zinc-700">
+                          {uploadingImage ? 'Subiendo...' : 'Subir logotipo (JPG, PNG)'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleImageUpload('identity', 'companyLogoUrl')}
+                          disabled={uploadingImage}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
             </div>
           </section>
 

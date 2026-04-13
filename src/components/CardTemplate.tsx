@@ -5,6 +5,7 @@ interface CardTemplateProps {
   templateId: number;
   color: string;
   logo: string | null;
+  companyLogo?: string | null;
   data: {
     firstName: string;
     lastName: string;
@@ -21,7 +22,7 @@ interface CardTemplateProps {
   };
 }
 
-export default function CardTemplate({ templateId, color, logo, data }: CardTemplateProps) {
+export default function CardTemplate({ templateId, color, logo, companyLogo, data }: CardTemplateProps) {
   const { firstName, lastName, role, company, mobile, landline, email, website, linkedin, instagram, twitter, tiktok } = data;
   const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const displayRole = [role, company].filter(Boolean).join(' - ');
@@ -50,6 +51,13 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
     );
   };
 
+  const renderCompanyLogo = (className = "h-8 w-auto max-w-[120px]") => {
+    if (companyLogo) {
+      return <img src={companyLogo} alt="Logo empresa" className={`${className} object-contain`} />;
+    }
+    return null;
+  };
+
   const renderContact = (className = "text-[8px] flex flex-col gap-1", iconColor = "text-zinc-500") => (
     <div className={className}>
       {mobile && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {mobile}</div>}
@@ -73,6 +81,19 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
       {instagram && <div className="flex items-center gap-1"><Instagram className={`w-2.5 h-2.5 ${iconColor}`} /> {instagram}</div>}
       {twitter && <div className="flex items-center gap-1"><Twitter className={`w-2.5 h-2.5 ${iconColor}`} /> {twitter}</div>}
       {tiktok && <div className="flex items-center gap-1"><Music2 className={`w-2.5 h-2.5 ${iconColor}`} /> {tiktok}</div>}
+    </div>
+  );
+
+  const renderContactGrid = (className = "text-[8px] grid grid-cols-3 gap-x-3 gap-y-1", iconColor = "text-zinc-500") => (
+    <div className={className}>
+      {mobile && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {mobile}</div>}
+      {landline && <div className="flex items-center gap-1.5"><Phone className={`w-2.5 h-2.5 ${iconColor}`} /> {landline}</div>}
+      {email && <div className="flex items-center gap-1.5"><Mail className={`w-2.5 h-2.5 ${iconColor}`} /> {email}</div>}
+      {website && <div className="flex items-center gap-1.5"><Globe className={`w-2.5 h-2.5 ${iconColor}`} /> {website}</div>}
+      {linkedin && <div className="flex items-center gap-1.5"><Linkedin className={`w-2.5 h-2.5 ${iconColor}`} /> {linkedin}</div>}
+      {instagram && <div className="flex items-center gap-1.5"><Instagram className={`w-2.5 h-2.5 ${iconColor}`} /> {instagram}</div>}
+      {twitter && <div className="flex items-center gap-1.5"><Twitter className={`w-2.5 h-2.5 ${iconColor}`} /> {twitter}</div>}
+      {tiktok && <div className="flex items-center gap-1.5"><Music2 className={`w-2.5 h-2.5 ${iconColor}`} /> {tiktok}</div>}
     </div>
   );
 
@@ -106,7 +127,7 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
             <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
             <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
           </div>
-          {renderContactHorizontal("text-[8px] flex gap-3 justify-center w-full")}
+          {renderContactGrid()}
         </div>
       );
     case 4:
@@ -116,7 +137,7 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
             <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
             <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
           </div>
-          {renderContactHorizontal("text-[8px] flex gap-3 justify-end w-full")}
+          {renderContactGrid()}
         </div>
       );
     case 5:
@@ -153,7 +174,7 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
             <p className="text-[9px] text-zinc-600 mt-1 uppercase tracking-widest">{displayRole}</p>
           </div>
           <div className="absolute bottom-6 w-full px-6">
-            {renderContactHorizontal("text-[8px] flex gap-3 justify-center w-full")}
+            {renderContactGrid()}
           </div>
         </div>
       );
@@ -271,8 +292,8 @@ export default function CardTemplate({ templateId, color, logo, data }: CardTemp
             <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
           </div>
           <div className="w-full">
-            {renderContactHorizontal("text-[8px] flex gap-3 justify-center w-full mb-2")}
-            <div className="w-full h-px bg-zinc-300" />
+            {renderContactGrid()}
+            <div className="w-full h-px bg-zinc-300 mt-2" />
           </div>
         </div>
       );

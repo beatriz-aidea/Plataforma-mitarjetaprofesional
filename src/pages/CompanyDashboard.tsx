@@ -1,0 +1,411 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { db } from '../firebase';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { Building2, Users, Download, FileSpreadsheet, Eye, Edit2, Ban, Trash2, ArrowLeft, X, Check } from 'lucide-react';
+import Logo from '../components/Logo';
+
+interface Company {
+  id: string;
+  name: string;
+  logo: string;
+  customFields: any[];
+}
+
+interface Member {
+  uid: string;
+  email: string;
+  name: string;
+  status: string;
+  cardId?: string;
+  customFieldValues?: Record<string, any>;
+}
+
+export default function CompanyDashboard() {
+  const { user, userRole, companyId } = useAuth();
+  const navigate = useNavigate();
+  
+  const [company, setCompany] = useState<Company | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, any>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    if (userRole !== 'company_admin' && userRole !== 'admin') {
+      navigate('/dashboard');
+      return;
+    }
+
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        // Fetch company details
+        const companyDoc = await getDoc(doc(db, 'companies', companyId));
+        if (companyDoc.exists()) {
+          setCompany({ id: companyDoc.id, ...companyDoc.data() } as Company);
+        }
+
+        // Fetch members
+        const usersQuery = query(collection(db, 'users'), where('companyId', '==', companyId));
+        const usersSnap = await getDocs(usersQuery);
+        
+        const membersData: Member[] = [];
+        
+        for (const userDoc of usersSnap.docs) {
+          const userData = userDoc.data();
+          
+          // Fetch card for this user to get name and cardId
+          const cardsQuery = query(collection(db, 'cards'), where('ownerUid', '==', userDoc.id));
+          const cardsSnap = await getDocs(cardsQuery);
+          
+          let cardId = undefined;
+          let name = userData.email || 'Usuario';
+          let customFieldValues = {};
+          
+          if (!cardsSnap.empty) {
+            const cardDoc = cardsSnap.docs[0];
+            cardId = cardDoc.id;
+            const cardData = cardDoc.data();
+            if (cardData.identity?.firstName || cardData.identity?.lastName) {
+              name = `${cardData.identity?.firstName || ''} ${cardData.identity?.lastName || ''}`.trim();
+            }
+            customFieldValues = cardData.customFieldValues || {};
+          }
+
+          membersData.push({
+            uid: userDoc.id,
+            email: userData.email,
+            name,
+            status: userData.status || 'active',
+            cardId,
+            customFieldValues
+          });
+        }
+        
+        setMembers(membersData);
+      } catch (error) {
+        console.error("Error fetching company data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [user, userRole, companyId, navigate]);
+
+  const handleDeactivate = async (uid: string) => {
+    if (!window.confirm('¿Estás seguro de que deseas desactivar a este miembro?')) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), { status: 'inactive' });
+      setMembers(members.map(m => m.uid === uid ? { ...m, status: 'inactive' } : m));
+    } catch (error) {
+      console.error("Error deactivating member:", error);
+      alert("Error al desactivar el miembro");
+    }
+  };
+
+  const handleDelete = async (uid: string) => {
+    if (!window.confirm('¿Estás seguro de que deseas eliminar a este miembro permanentemente?')) return;
+    try {
+      await deleteDoc(doc(db, 'users', uid));
+      setMembers(members.filter(m => m.uid !== uid));
+    } catch (error) {
+      console.error("Error deleting member:", error);
+      alert("Error al eliminar el miembro");
+    }
+  };
+
+  const openEditModal = (member: Member) => {
+    setSelectedMember(member);
+    setCustomValues(member.customFieldValues || {});
+    setIsEditModalOpen(true);
+  };
+
+  const saveCustomFields = async () => {
+    if (!selectedMember || !selectedMember.cardId) {
+      alert("Este usuario no tiene una tarjeta asociada.");
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'cards', selectedMember.cardId), {
+        customFieldValues: customValues
+      });
+      
+      setMembers(members.map(m => 
+        m.uid === selectedMember.uid 
+          ? { ...m, customFieldValues: customValues } 
+          : m
+      ));
+      
+      setIsEditModalOpen(false);
+    } catch (error) {
+      console.error("Error saving custom fields:", error);
+      alert("Error al guardar los campos personalizados");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const exportCSV = () => {
+    if (!company) return;
+    
+    const headers = ['Nombre', 'Email', 'Estado', 'Tarjeta Activa'];
+    const customFieldKeys = company.customFields?.map(f => f.label) || [];
+    
+    const rows = members.map(m => {
+      const baseData = [
+        m.name,
+        m.email,
+        m.status === 'active' ? 'Activo' : 'Inactivo',
+        m.cardId ? 'Sí' : 'No'
+      ];
+      
+      const customData = company.customFields?.map(f => m.customFieldValues?.[f.id] || '') || [];
+      return [...baseData, ...customData].join(',');
+    });
+    
+    const csvContent = [
+      [...headers, ...customFieldKeys].join(','),
+      ...rows
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `miembros_${company.name.replace(/\s+/g, '_')}.csv`;
+    link.click();
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
+
+  if (!company) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex flex-col items-center justify-center p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-zinc-200 text-center max-w-md w-full">
+          <Building2 className="w-12 h-12 text-zinc-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">Empresa no encontrada</h2>
+          <p className="text-zinc-600 mb-6">No estás asociado a ninguna empresa o la empresa no existe.</p>
+          <button onClick={() => navigate('/dashboard')} className="px-6 py-2 bg-brand-600 text-white rounded-xl font-medium">
+            Volver al Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-50 font-sans pb-20">
+      <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button onClick={() => navigate('/dashboard')} className="text-zinc-600 hover:text-zinc-900">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <Logo className="h-8" />
+            <span className="font-semibold text-zinc-900 hidden sm:inline">Panel de Empresa</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {company.logo && (
+              <img src={company.logo} alt={company.name} className="h-8 w-auto object-contain" />
+            )}
+            <span className="font-bold text-zinc-900">{company.name}</span>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
+              <Users className="w-6 h-6 text-brand-600" />
+              Miembros del Equipo
+            </h1>
+            <p className="text-zinc-600 mt-1">Gestiona los usuarios y tarjetas de tu empresa</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={exportCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-50 font-medium text-sm transition-colors"
+            >
+              <Download className="w-4 h-4" />
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-zinc-50 border-b border-zinc-200">
+                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Nombre</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Email</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Tarjeta Activa</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Estado</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {members.map(member => (
+                  <tr key={member.uid} className="hover:bg-zinc-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="font-medium text-zinc-900">{member.name}</div>
+                    </td>
+                    <td className="px-6 py-4 text-zinc-600">{member.email}</td>
+                    <td className="px-6 py-4">
+                      {member.cardId ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                          <Check className="w-3 h-3" /> Sí
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600">
+                          No
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                        member.status === 'active' 
+                          ? 'bg-blue-100 text-blue-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {member.status === 'active' ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {member.cardId && (
+                          <button 
+                            onClick={() => window.open(`/c/${member.cardId}`, '_blank')}
+                            className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Ver tarjeta"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => openEditModal(member)}
+                          className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Editar campos personalizados"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        {member.status === 'active' && (
+                          <button 
+                            onClick={() => handleDeactivate(member.uid)}
+                            className="p-2 text-zinc-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title="Desactivar miembro"
+                          >
+                            <Ban className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => handleDelete(member.uid)}
+                          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar miembro"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {members.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
+                      No hay miembros en esta empresa.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+
+      {/* Edit Custom Fields Modal */}
+      {isEditModalOpen && selectedMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-xl">
+            <div className="flex items-center justify-between p-6 border-b border-zinc-100">
+              <h3 className="text-lg font-bold text-zinc-900">
+                Campos de {selectedMember.name}
+              </h3>
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-4">
+              {company?.customFields && company.customFields.length > 0 ? (
+                company.customFields.map(field => (
+                  <div key={field.id}>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">
+                      {field.label} {field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {field.type === 'select' ? (
+                      <select
+                        value={customValues[field.id] || ''}
+                        onChange={(e) => setCustomValues({...customValues, [field.id]: e.target.value})}
+                        className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {field.options?.map((opt: string) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type === 'date' ? 'date' : 'text'}
+                        value={customValues[field.id] || ''}
+                        onChange={(e) => setCustomValues({...customValues, [field.id]: e.target.value})}
+                        className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                      />
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p className="text-zinc-500 text-center py-4">
+                  Esta empresa no tiene campos personalizados configurados.
+                </p>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-zinc-100 bg-zinc-50 flex justify-end gap-3">
+              <button 
+                onClick={() => setIsEditModalOpen(false)}
+                className="px-4 py-2 text-zinc-600 font-medium hover:bg-zinc-200 rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={saveCustomFields}
+                disabled={saving || !selectedMember.cardId}
+                className="px-4 py-2 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Guardando...' : 'Guardar Cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

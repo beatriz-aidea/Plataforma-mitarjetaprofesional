@@ -7,6 +7,7 @@ import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smar
 import CardTemplate from '../components/CardTemplate';
 import Logo from '../components/Logo';
 import { QRCodeSVG } from 'qrcode.react';
+import emailjs from '@emailjs/browser';
 
 const CATEGORIES = [
   {
@@ -189,6 +190,22 @@ export default function Store() {
       });
       
       setStep(4); // Success step
+
+      await emailjs.send(
+        'MitarjetaProfesional',
+        'template_pedido',
+        {
+          name: billing.firstName + ' ' + billing.lastName,
+          client_email: billing.nif,
+          client_phone: billing.phone,
+          product_name: selectedProduct.name,
+          price: selectedProduct.price,
+          design: designMode === 'template' ? selectedDesign.name : 'Diseño personalizado',
+          color: corporateColor,
+          shipping_address: `${billing.street}, ${billing.zip} ${billing.city}, ${billing.province}`,
+        },
+        'Te7HGxULizbdxz0Lr'
+      );
     } catch (error) {
       console.error("Error placing order:", error);
       alert("Error al procesar el pedido.");
@@ -464,6 +481,7 @@ export default function Store() {
                                       templateId={design.templateId}
                                       color={corporateColor}
                                       logo={selectedFields.logo ? logoPreview : undefined}
+                                      companyLogo={activeCardData?.identity?.companyLogoUrl || null}
                                       data={templateData}
                                     />
                                   </div>
@@ -860,19 +878,10 @@ export default function Store() {
                             templateId={selectedDesign.templateId} 
                             color={corporateColor} 
                             logo={selectedFields.logo ? logoPreview : undefined}
+                            companyLogo={activeCardData?.identity?.companyLogoUrl || null}
                             data={templateData} 
                           />
                         )}
-                        
-                        {/* NFC Icon Hint */}
-                        <div className="absolute top-4 right-4 opacity-50 pointer-events-none">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-zinc-400">
-                            <path d="M6 2L6 22"/>
-                            <path d="M10 4L10 20"/>
-                            <path d="M14 6L14 18"/>
-                            <path d="M18 8L18 16"/>
-                          </svg>
-                        </div>
                       </div>
                       
                       {/* Back Face */}

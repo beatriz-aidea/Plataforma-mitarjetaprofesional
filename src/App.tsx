@@ -13,6 +13,7 @@ import EnterpriseDashboard from './pages/EnterpriseDashboard';
 import SuccessCard from './pages/SuccessCard';
 import EnterpriseContact from './pages/EnterpriseContact';
 import ChoosePlan from './pages/ChoosePlan';
+import CompanyDashboard from './pages/CompanyDashboard';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/elegir-plan" element={<ChoosePlan />} />
             <Route path="/edit/:cardId?" element={<PrivateRoute><EditCard /></PrivateRoute>} />
             <Route path="/admin" element={<PrivateRoute><AdminDashboard /></PrivateRoute>} />
+            <Route path="/empresa" element={<PrivateRoute><CompanyDashboard /></PrivateRoute>} />
             <Route path="/enterprise" element={<PrivateRoute><EnterpriseDashboard /></PrivateRoute>} />
             <Route path="/success/:cardId" element={<SuccessCard />} />
             <Route path="/enterprise-contact" element={<EnterpriseContact />} />
