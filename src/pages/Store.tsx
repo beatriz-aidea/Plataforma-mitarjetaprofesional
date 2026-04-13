@@ -191,21 +191,26 @@ export default function Store() {
       
       setStep(4); // Success step
 
-      await emailjs.send(
-        'MitarjetaProfesional',
-        'template_pedido',
-        {
-          name: billing.firstName + ' ' + billing.lastName,
-          client_email: billing.nif,
-          client_phone: billing.phone,
-          product_name: selectedProduct.name,
-          price: selectedProduct.price,
-          design: designMode === 'template' ? selectedDesign.name : 'Diseño personalizado',
-          color: corporateColor,
-          shipping_address: `${billing.street}, ${billing.zip} ${billing.city}, ${billing.province}`,
-        },
-        'Te7HGxULizbdxz0Lr'
-      );
+      try {
+        await emailjs.send(
+          'MitarjetaProfesional',
+          'template_pedido',
+          {
+            name: billing.firstName + ' ' + billing.lastName,
+            client_email: billing.nif,
+            client_phone: billing.phone,
+            product_name: selectedProduct.name,
+            price: selectedProduct.price,
+            design: designMode === 'template' ? selectedDesign.name : 'Diseño personalizado',
+            color: corporateColor,
+            shipping_address: `${billing.street}, ${billing.zip} ${billing.city}, ${billing.province}`,
+          },
+          'Te7HGxULizbdxz0Lr'
+        );
+        console.log('Email enviado correctamente');
+      } catch (emailError) {
+        console.error('Error enviando email:', emailError);
+      }
     } catch (error) {
       console.error("Error placing order:", error);
       alert("Error al procesar el pedido.");
