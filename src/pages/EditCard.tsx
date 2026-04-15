@@ -69,8 +69,18 @@ export default function EditCard() {
         if (docSnap.exists()) {
           const data = docSnap.data();
           
-          // Check permissions: owner or admin
-          if (data.ownerUid === user?.uid || isAdminUser) {
+          let hasPermission = data.ownerUid === user?.uid || isAdminUser;
+
+          if (!hasPermission && userRole === 'company_admin' && companyId) {
+            // Check if the card owner belongs to the same company
+            const ownerDoc = await getDoc(doc(db, 'users', data.ownerUid));
+            if (ownerDoc.exists() && ownerDoc.data().companyId === companyId) {
+              hasPermission = true;
+            }
+          }
+          
+          // Check permissions: owner or admin or company_admin
+          if (hasPermission) {
             // Check if free user is trying to edit (allow anonymous users during session)
             if (userRole === 'free' && !isAdminUser && !user.isAnonymous) {
               alert("Los usuarios con plan gratuito no pueden editar sus tarjetas. Por favor, suscríbete para habilitar la edición.");
@@ -123,10 +133,10 @@ export default function EditCard() {
               status: data.status || 'active'
             });
           } else {
-            navigate(isAdminUser ? '/admin' : '/dashboard');
+            navigate(isAdminUser ? '/admin' : (userRole === 'company_admin' ? '/empresa' : '/dashboard'));
           }
         } else {
-          navigate(isAdminUser ? '/admin' : '/dashboard');
+          navigate(isAdminUser ? '/admin' : (userRole === 'company_admin' ? '/empresa' : '/dashboard'));
         }
       } catch (error) {
         console.error("Error fetching card", error);

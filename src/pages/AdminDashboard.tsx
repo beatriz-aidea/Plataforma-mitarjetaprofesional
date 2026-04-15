@@ -3,7 +3,7 @@ import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, setDoc,
 import { db, auth } from '../firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import Logo from '../components/Logo';
-import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode } from 'lucide-react';
+import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode, Ban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -13,12 +13,26 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [customFields, setCustomFields] = useState<any[]>([]);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [fieldTemplates, setFieldTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
   const [showProductModal, setShowProductModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [newCompany, setNewCompany] = useState({
+    name: '',
+    type: 'empresa',
+    templateId: '',
+    customFields: [] as any[],
+    parentCompanyId: '',
+    adminEmail: '',
+    logoUrl: '',
+    status: 'activo'
+  });
   const [newProduct, setNewProduct] = useState({ 
     name: '', 
     price: 0, 
@@ -34,7 +48,9 @@ export default function AdminDashboard() {
   });
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<{ type: 'user' | 'card' | 'product' | 'field', id: string } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ type: 'user' | 'card' | 'product' | 'field' | 'company', id: string } | null>(null);
+  const [companyAdminModal, setCompanyAdminModal] = useState<{ userId: string } | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'enterprises', 'cards', 'products'
 
   const compressImage = (file: File, callback: (dataUrl: string) => void) => {
@@ -137,6 +153,16 @@ export default function AdminDashboard() {
         const fieldsData = fieldsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setCustomFields(fieldsData);
 
+        // Fetch companies
+        const companiesSnapshot = await getDocs(collection(db, 'companies'));
+        const companiesData = companiesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCompanies(companiesData);
+
+        // Fetch field templates
+        const templatesSnapshot = await getDocs(collection(db, 'fieldTemplates'));
+        const templatesData = templatesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setFieldTemplates(templatesData);
+
       } catch (err: any) {
         console.error("Error fetching admin data:", err);
         setError('No tienes permisos de administrador o hubo un error al cargar los datos.');
@@ -149,6 +175,11 @@ export default function AdminDashboard() {
   }, [navigate]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    if (newRole === 'company_admin') {
+      setCompanyAdminModal({ userId });
+      return;
+    }
+
     try {
       const updates: any = { role: newRole };
       
@@ -183,8 +214,38 @@ export default function AdminDashboard() {
     }
   };
 
-  const confirmDelete = (type: 'user' | 'card' | 'product' | 'field', id: string) => {
-    setItemToDelete({ type, id });
+  const handleAssignCompanyAdmin = async () => {
+    if (!companyAdminModal || !selectedCompanyId) return;
+    
+    try {
+      const { userId } = companyAdminModal;
+      
+      // Update user
+      await updateDoc(doc(db, 'users', userId), { 
+        role: 'company_admin',
+        companyId: selectedCompanyId
+      });
+      
+      // Update company
+      await updateDoc(doc(db, 'companies', selectedCompanyId), {
+        adminUid: userId
+      });
+
+      setUsers(users.map(u => u.id === userId ? { ...u, role: 'company_admin', companyId: selectedCompanyId } : u));
+      setCompanies(companies.map(c => c.id === selectedCompanyId ? { ...c, adminUid: userId } : c));
+      
+      alert('Administrador de empresa asignado correctamente');
+    } catch (error) {
+      console.error("Error assigning company admin:", error);
+      alert('Error al asignar administrador de empresa');
+    } finally {
+      setCompanyAdminModal(null);
+      setSelectedCompanyId('');
+    }
+  };
+
+  const confirmDelete = (type: 'user' | 'card' | 'product' | 'field' | 'company', id: string) => {
+    setItemToDelete({ type, id } as any);
     setDeleteModalOpen(true);
   };
 
@@ -213,6 +274,9 @@ export default function AdminDashboard() {
       } else if (type === 'field') {
         await deleteDoc(doc(db, 'customFields', id));
         setCustomFields(customFields.filter(f => f.id !== id));
+      } else if (type === 'company') {
+        await deleteDoc(doc(db, 'companies', id));
+        setCompanies(companies.filter(c => c.id !== id));
       }
     } catch (error) {
       console.error(`Error deleting ${type}:`, error);
@@ -266,6 +330,114 @@ export default function AdminDashboard() {
       console.error("Error adding field:", error);
       alert("Error al añadir el campo");
     }
+  };
+
+  const handleSaveCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      let adminUid = '';
+      if (newCompany.adminEmail) {
+        const user = users.find(u => u.email === newCompany.adminEmail);
+        if (user) {
+          adminUid = user.id;
+        } else {
+          alert('No se encontró ningún usuario con ese email.');
+          return;
+        }
+      }
+
+      const companyId = editingCompanyId || crypto.randomUUID();
+      const companyData = {
+        name: newCompany.name,
+        type: newCompany.type,
+        templateId: newCompany.templateId,
+        customFields: newCompany.customFields,
+        parentCompanyId: newCompany.parentCompanyId,
+        adminUid: adminUid,
+        logoUrl: newCompany.logoUrl,
+        status: newCompany.status,
+        updatedAt: serverTimestamp()
+      };
+
+      if (!editingCompanyId) {
+        (companyData as any).createdAt = serverTimestamp();
+      }
+
+      await setDoc(doc(db, 'companies', companyId), companyData, { merge: true });
+
+      if (adminUid) {
+        await updateDoc(doc(db, 'users', adminUid), {
+          role: 'company_admin',
+          companyId: companyId
+        });
+        setUsers(users.map(u => u.id === adminUid ? { ...u, role: 'company_admin', companyId } : u));
+      }
+
+      if (editingCompanyId) {
+        setCompanies(companies.map(c => c.id === companyId ? { ...c, ...companyData } : c));
+      } else {
+        setCompanies([...companies, { id: companyId, ...companyData }]);
+      }
+
+      setShowCompanyModal(false);
+      setEditingCompanyId(null);
+      setNewCompany({ name: '', type: 'empresa', templateId: '', customFields: [], parentCompanyId: '', adminEmail: '', logoUrl: '', status: 'activo' });
+    } catch (error) {
+      console.error("Error saving company:", error);
+      alert("Error al guardar la empresa");
+    }
+  };
+
+  const handleEditCompany = (company: any) => {
+    const adminUser = users.find(u => u.id === company.adminUid);
+    setNewCompany({
+      name: company.name || '',
+      type: company.type || 'empresa',
+      templateId: company.templateId || '',
+      customFields: company.customFields || [],
+      parentCompanyId: company.parentCompanyId || '',
+      adminEmail: adminUser ? adminUser.email : '',
+      logoUrl: company.logoUrl || '',
+      status: company.status || 'activo'
+    });
+    setEditingCompanyId(company.id);
+    setShowCompanyModal(true);
+  };
+
+  const handleTemplateChange = (templateId: string) => {
+    const template = fieldTemplates.find(t => t.id === templateId);
+    setNewCompany(prev => ({
+      ...prev,
+      templateId,
+      customFields: template ? [...template.fields] : []
+    }));
+  };
+
+  const handleAddCompanyCustomField = () => {
+    setNewCompany(prev => ({
+      ...prev,
+      customFields: [...prev.customFields, { label: '', type: 'text', required: false, options: [] }]
+    }));
+  };
+
+  const handleRemoveCompanyCustomField = (index: number) => {
+    setNewCompany(prev => ({
+      ...prev,
+      customFields: prev.customFields.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateCompanyCustomField = (index: number, field: string, value: any) => {
+    setNewCompany(prev => {
+      const newFields = [...prev.customFields];
+      newFields[index] = { ...newFields[index], [field]: value };
+      return { ...prev, customFields: newFields };
+    });
+  };
+
+  const handleCompanyLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) compressImage(file, (dataUrl) => setNewCompany(prev => ({ ...prev, logoUrl: dataUrl })));
   };
 
   if (loading) {
@@ -421,6 +593,7 @@ export default function AdminDashboard() {
                           <option value="free">Particular (Free)</option>
                           <option value="subscription">Suscripción</option>
                           <option value="enterprise">Empresa</option>
+                          <option value="company_admin">Admin Empresa</option>
                           <option value="admin">Administrador</option>
                         </select>
                       </td>
@@ -496,54 +669,83 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8">
           <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50 flex justify-between items-center">
             <h2 className="font-bold text-lg text-zinc-900">Gestión de Empresas</h2>
+            <button 
+              onClick={() => {
+                setEditingCompanyId(null);
+                setNewCompany({ name: '', type: 'empresa', templateId: '', customFields: [], parentCompanyId: '', adminEmail: '', logoUrl: '', status: 'activo' });
+                setShowCompanyModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors font-medium text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva empresa
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Empresa</th>
-                  <th className="px-6 py-3 font-medium">Email Administrador</th>
-                  <th className="px-6 py-3 font-medium">Empleados (Tarjetas)</th>
+                  <th className="px-6 py-3 font-medium">Nombre</th>
+                  <th className="px-6 py-3 font-medium">Tipo</th>
+                  <th className="px-6 py-3 font-medium">Estado</th>
+                  <th className="px-6 py-3 font-medium">Admin asignado</th>
+                  <th className="px-6 py-3 font-medium">Nº de miembros</th>
                   <th className="px-6 py-3 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {users.filter(u => u.role === 'enterprise').map(user => {
-                  const userCards = cards.filter(c => c.ownerUid === user.id);
+                {companies.map(company => {
+                  const adminUser = users.find(u => u.id === company.adminUid);
+                  const membersCount = users.filter(u => u.companyId === company.id).length;
                   return (
-                    <tr key={user.id} className="hover:bg-zinc-50">
-                      <td className="px-6 py-4 font-medium text-zinc-900">{user.companyName || 'Sin nombre'}</td>
-                      <td className="px-6 py-4 text-zinc-500">{user.email}</td>
-                      <td className="px-6 py-4 text-zinc-500">{userCards.length} empleados</td>
+                    <tr key={company.id} className="hover:bg-zinc-50">
+                      <td className="px-6 py-4 font-medium text-zinc-900">{company.name}</td>
+                      <td className="px-6 py-4 text-zinc-500 capitalize">{company.type}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          company.status === 'activo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {company.status === 'activo' ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-zinc-500">{adminUser ? adminUser.email : 'Sin asignar'}</td>
+                      <td className="px-6 py-4 text-zinc-500">{membersCount}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <button 
-                            onClick={() => navigate(`/edit?ownerUid=${user.id}`)}
-                            className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-brand-600 bg-brand-50 hover:bg-brand-100 rounded-lg transition-colors"
-                            title="Añadir empleado a esta empresa"
+                            onClick={() => handleEditCompany(company)}
+                            className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Editar empresa"
                           >
-                            <Plus className="w-4 h-4" /> Añadir Empleado
+                            <Edit2 className="w-4 h-4" />
                           </button>
-                          <button 
-                            onClick={() => {
-                              // Filtrar tarjetas en la vista de tarjetas
-                              setActiveTab('cards');
-                              // Podríamos añadir un filtro de búsqueda por ownerUid en el futuro
+                          <button
+                            onClick={async () => {
+                              const newStatus = company.status === 'activo' ? 'inactivo' : 'activo';
+                              await updateDoc(doc(db, 'companies', company.id), { status: newStatus });
+                              setCompanies(companies.map(c => c.id === company.id ? { ...c, status: newStatus } : c));
                             }}
-                            className="p-1.5 text-zinc-600 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
-                            title="Ver empleados (Ir a Tarjetas)"
+                            className="p-1.5 text-zinc-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                            title={company.status === 'activo' ? 'Desactivar empresa' : 'Activar empresa'}
                           >
-                            <Users className="w-4 h-4" />
+                            <Ban className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => confirmDelete('company' as any, company.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar empresa"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
                     </tr>
                   );
                 })}
-                {users.filter(u => u.role === 'enterprise').length === 0 && (
+                {companies.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
-                      No hay empresas registradas. Cambia el rol de un usuario a "Empresa" para crear una.
+                    <td colSpan={6} className="px-6 py-8 text-center text-zinc-500">
+                      No hay empresas registradas.
                     </td>
                   </tr>
                 )}
@@ -888,11 +1090,13 @@ export default function AdminDashboard() {
         title={
           itemToDelete?.type === 'user' ? 'Eliminar Usuario' :
           itemToDelete?.type === 'card' ? 'Eliminar Tarjeta' :
+          itemToDelete?.type === 'company' ? 'Eliminar Empresa' :
           'Eliminar Producto'
         }
         message={
           itemToDelete?.type === 'user' ? '¿Estás seguro de que quieres eliminar este usuario y todas sus tarjetas? Esta acción no se puede deshacer.' :
           itemToDelete?.type === 'card' ? '¿Estás seguro de que quieres eliminar esta tarjeta permanentemente?' :
+          itemToDelete?.type === 'company' ? '¿Estás seguro de que quieres eliminar esta empresa? Esta acción no se puede deshacer.' :
           '¿Estás seguro de que quieres eliminar este producto?'
         }
         onConfirm={executeDelete}
@@ -902,6 +1106,251 @@ export default function AdminDashboard() {
         }}
         confirmText="Eliminar"
       />
+      {/* Company Admin Modal */}
+      {companyAdminModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold mb-4">Asignar Administrador de Empresa</h3>
+            <p className="text-zinc-600 mb-4 text-sm">
+              Selecciona la empresa para la que este usuario será administrador.
+            </p>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa</label>
+              <select
+                value={selectedCompanyId}
+                onChange={(e) => setSelectedCompanyId(e.target.value)}
+                className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+              >
+                <option value="">Selecciona una empresa</option>
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={() => {
+                  setCompanyAdminModal(null);
+                  setSelectedCompanyId('');
+                }}
+                className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 rounded-xl font-medium"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleAssignCompanyAdmin}
+                disabled={!selectedCompanyId}
+                className="px-4 py-2 bg-brand-600 text-white rounded-xl font-medium disabled:opacity-50"
+              >
+                Asignar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Company Modal */}
+      {showCompanyModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full my-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">{editingCompanyId ? 'Editar Empresa' : 'Nueva Empresa'}</h3>
+              <button onClick={() => setShowCompanyModal(false)} className="text-zinc-400 hover:text-zinc-600">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveCompany} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre *</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newCompany.name}
+                    onChange={e => setNewCompany({...newCompany, name: e.target.value})}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Tipo</label>
+                  <select 
+                    value={newCompany.type}
+                    onChange={e => setNewCompany({...newCompany, type: e.target.value})}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  >
+                    <option value="empresa">Empresa</option>
+                    <option value="asociación">Asociación</option>
+                    <option value="federación">Federación</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Plantilla de sector</label>
+                  <select 
+                    value={newCompany.templateId}
+                    onChange={e => handleTemplateChange(e.target.value)}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  >
+                    <option value="">Selecciona una plantilla...</option>
+                    {fieldTemplates.map(t => (
+                      <option key={t.id} value={t.id}>{t.name || t.id}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-zinc-500 mt-1">Al seleccionar, se copiarán los campos de la plantilla.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa madre (opcional)</label>
+                  <select 
+                    value={newCompany.parentCompanyId}
+                    onChange={e => setNewCompany({...newCompany, parentCompanyId: e.target.value})}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  >
+                    <option value="">Ninguna</option>
+                    {companies.filter(c => c.id !== editingCompanyId).map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Admin de empresa (Email)</label>
+                  <input 
+                    type="email" 
+                    placeholder="usuario@ejemplo.com"
+                    value={newCompany.adminEmail}
+                    onChange={e => setNewCompany({...newCompany, adminEmail: e.target.value})}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  />
+                  <p className="text-xs text-zinc-500 mt-1">El usuario debe existir en el sistema.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Estado</label>
+                  <select 
+                    value={newCompany.status}
+                    onChange={e => setNewCompany({...newCompany, status: e.target.value})}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  >
+                    <option value="activo">Activo</option>
+                    <option value="inactivo">Inactivo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">Logo (opcional)</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={handleCompanyLogoUpload}
+                  className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                />
+                {newCompany.logoUrl && (
+                  <img src={newCompany.logoUrl} alt="Logo preview" className="mt-2 h-16 object-contain rounded" />
+                )}
+              </div>
+
+              <div className="border-t border-zinc-200 pt-4 mt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-medium text-zinc-900">Campos Personalizados</h4>
+                  <button 
+                    type="button"
+                    onClick={handleAddCompanyCustomField}
+                    className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" /> Añadir campo
+                  </button>
+                </div>
+                
+                {newCompany.customFields.length === 0 ? (
+                  <p className="text-sm text-zinc-500 italic">No hay campos personalizados.</p>
+                ) : (
+                  <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
+                    {newCompany.customFields.map((field, index) => (
+                      <div key={index} className="flex gap-2 items-start bg-zinc-50 p-3 rounded-xl border border-zinc-200">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Etiqueta (ej. Departamento)"
+                            value={field.label}
+                            onChange={e => handleUpdateCompanyCustomField(index, 'label', e.target.value)}
+                            className="w-full p-1.5 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                            required
+                          />
+                          <select 
+                            value={field.type}
+                            onChange={e => handleUpdateCompanyCustomField(index, 'type', e.target.value)}
+                            className="w-full p-1.5 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                          >
+                            <option value="text">Texto</option>
+                            <option value="number">Número</option>
+                            <option value="date">Fecha</option>
+                            <option value="select">Desplegable</option>
+                            <option value="boolean">Sí/No</option>
+                            <option value="url">URL</option>
+                          </select>
+                          
+                          {field.type === 'select' && (
+                            <div className="col-span-2">
+                              <input 
+                                type="text" 
+                                placeholder="Opciones separadas por coma"
+                                value={field.options ? field.options.join(', ') : ''}
+                                onChange={e => handleUpdateCompanyCustomField(index, 'options', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                                className="w-full p-1.5 text-sm border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none"
+                              />
+                            </div>
+                          )}
+                          
+                          <div className="col-span-2 flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              id={`req-${index}`}
+                              checked={field.required || false}
+                              onChange={e => handleUpdateCompanyCustomField(index, 'required', e.target.checked)}
+                              className="rounded text-brand-600 focus:ring-brand-500"
+                            />
+                            <label htmlFor={`req-${index}`} className="text-sm text-zinc-600">Obligatorio</label>
+                          </div>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => handleRemoveCompanyCustomField(index)}
+                          className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors mt-0.5"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 justify-end pt-4 border-t border-zinc-200">
+                <button 
+                  type="button"
+                  onClick={() => setShowCompanyModal(false)}
+                  className="px-4 py-2 text-zinc-600 hover:bg-zinc-100 rounded-xl font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="px-4 py-2 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors"
+                >
+                  Guardar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

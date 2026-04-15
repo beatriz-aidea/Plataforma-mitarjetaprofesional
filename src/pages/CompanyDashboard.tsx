@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Building2, Users, Download, FileSpreadsheet, Eye, Edit2, Ban, Trash2, ArrowLeft, X, Check } from 'lucide-react';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
+import { Building2, Users, Download, FileSpreadsheet, Eye, Edit2, Ban, Trash2, ArrowLeft, X, Check, LayoutGrid, List, Table, Settings } from 'lucide-react';
 import Logo from '../components/Logo';
+import CardTemplate from '../components/CardTemplate';
 
 interface Company {
   id: string;
@@ -20,6 +21,7 @@ interface Member {
   status: string;
   cardId?: string;
   customFieldValues?: Record<string, any>;
+  cardData?: any;
 }
 
 export default function CompanyDashboard() {
@@ -34,6 +36,9 @@ export default function CompanyDashboard() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
+  
+  const [activeTab, setActiveTab] = useState<'members' | 'settings'>('members');
+  const [viewMode, setViewMode] = useState<'list' | 'gallery' | 'edit'>('list');
 
   useEffect(() => {
     if (!user) return;
@@ -66,17 +71,23 @@ export default function CompanyDashboard() {
           const userData = userDoc.data();
           
           // Fetch card for this user to get name and cardId
-          const cardsQuery = query(collection(db, 'cards'), where('ownerUid', '==', userDoc.id));
+          const cardsQuery = query(
+            collection(db, 'cards'), 
+            where('ownerUid', '==', userDoc.id),
+            where('companyId', '==', companyId),
+            limit(1)
+          );
           const cardsSnap = await getDocs(cardsQuery);
           
           let cardId = undefined;
           let name = userData.email || 'Usuario';
           let customFieldValues = {};
+          let cardData = undefined;
           
           if (!cardsSnap.empty) {
             const cardDoc = cardsSnap.docs[0];
             cardId = cardDoc.id;
-            const cardData = cardDoc.data();
+            cardData = cardDoc.data();
             if (cardData.identity?.firstName || cardData.identity?.lastName) {
               name = `${cardData.identity?.firstName || ''} ${cardData.identity?.lastName || ''}`.trim();
             }
@@ -89,7 +100,8 @@ export default function CompanyDashboard() {
             name,
             status: userData.status || 'active',
             cardId,
-            customFieldValues
+            customFieldValues,
+            cardData
           });
         }
         
@@ -247,94 +259,260 @@ export default function CompanyDashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-zinc-50 border-b border-zinc-200">
-                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Nombre</th>
-                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Email</th>
-                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Tarjeta Activa</th>
-                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Estado</th>
-                  <th className="px-6 py-4 text-sm font-semibold text-zinc-900 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {members.map(member => (
-                  <tr key={member.uid} className="hover:bg-zinc-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-zinc-900">{member.name}</div>
-                    </td>
-                    <td className="px-6 py-4 text-zinc-600">{member.email}</td>
-                    <td className="px-6 py-4">
-                      {member.cardId ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
-                          <Check className="w-3 h-3" /> Sí
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600">
-                          No
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                        member.status === 'active' 
-                          ? 'bg-blue-100 text-blue-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {member.status === 'active' ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {member.cardId && (
-                          <button 
-                            onClick={() => window.open(`/c/${member.cardId}`, '_blank')}
-                            className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
-                            title="Ver tarjeta"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => openEditModal(member)}
-                          className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="Editar campos personalizados"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        {member.status === 'active' && (
-                          <button 
-                            onClick={() => handleDeactivate(member.uid)}
-                            className="p-2 text-zinc-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                            title="Desactivar miembro"
-                          >
-                            <Ban className="w-4 h-4" />
-                          </button>
-                        )}
-                        <button 
-                          onClick={() => handleDelete(member.uid)}
-                          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar miembro"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {members.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
-                      No hay miembros en esta empresa.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="flex border-b border-zinc-200 mb-6">
+          <button
+            onClick={() => setActiveTab('members')}
+            className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'members' 
+                ? 'border-brand-600 text-brand-600' 
+                : 'border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Tarjetas de Empleados
+            </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'settings' 
+                ? 'border-brand-600 text-brand-600' 
+                : 'border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Configuración de Campos
+            </div>
+          </button>
         </div>
+
+        {activeTab === 'settings' ? (
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
+            <h2 className="text-lg font-bold text-zinc-900 mb-4">Campos Personalizados de la Empresa</h2>
+            <p className="text-zinc-600 mb-6 text-sm">
+              Estos son los campos personalizados que se han configurado para tu empresa. Puedes rellenar sus valores para cada empleado desde la pestaña de Tarjetas de Empleados.
+            </p>
+            {company.customFields && company.customFields.length > 0 ? (
+              <div className="space-y-4">
+                {company.customFields.map((field: any) => (
+                  <div key={field.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                    <div>
+                      <span className="font-medium text-zinc-900">{field.label}</span>
+                      <span className="ml-3 text-xs px-2 py-1 bg-zinc-200 text-zinc-700 rounded-md uppercase">
+                        {field.type}
+                      </span>
+                      {field.required && (
+                        <span className="ml-2 text-xs text-red-600 font-medium">Requerido</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12 bg-zinc-50 rounded-xl border border-zinc-100">
+                <p className="text-zinc-500">No hay campos personalizados configurados para esta empresa.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="flex justify-end mb-4">
+              <div className="flex bg-white border border-zinc-200 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  title="Vista de lista"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('gallery')}
+                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'gallery' ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  title="Vista de galería"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('edit')}
+                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'edit' ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'}`}
+                  title="Vista de edición"
+                >
+                  <Table className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {viewMode === 'gallery' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {members.map(member => (
+                  <div key={member.uid} className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden flex flex-col">
+                    <div className="p-4 border-b border-zinc-100 flex justify-between items-center bg-zinc-50">
+                      <div className="font-medium text-zinc-900 truncate pr-2">{member.name}</div>
+                      {member.cardId ? (
+                        <button 
+                          onClick={() => window.open(`/c/${member.cardId}`, '_blank')}
+                          className="text-brand-600 hover:text-brand-700 text-sm font-medium flex-shrink-0"
+                        >
+                          Ver
+                        </button>
+                      ) : (
+                        <span className="text-xs text-zinc-500">Sin tarjeta</span>
+                      )}
+                    </div>
+                    <div className="p-4 flex-grow flex items-center justify-center bg-zinc-100/50">
+                      {member.cardData ? (
+                        <div className="w-full max-w-[280px] aspect-[9/16] bg-white rounded-xl shadow-sm overflow-hidden relative transform scale-90 origin-center">
+                          <CardTemplate 
+                            templateId={member.cardData.design?.templateId || 1}
+                            color={member.cardData.design?.color || '#000000'}
+                            logo={member.cardData.design?.logoUrl}
+                            companyLogo={company.logo}
+                            data={{
+                              firstName: member.cardData.identity?.firstName || '',
+                              lastName: member.cardData.identity?.lastName || '',
+                              role: member.cardData.identity?.role || '',
+                              company: member.cardData.identity?.company || '',
+                              mobile: member.cardData.contact?.mobile || '',
+                              landline: member.cardData.contact?.landline || '',
+                              email: member.cardData.contact?.email || '',
+                              website: member.cardData.contact?.website || '',
+                              linkedin: member.cardData.social?.linkedin || '',
+                              instagram: member.cardData.social?.instagram || '',
+                              twitter: member.cardData.social?.twitter || '',
+                              tiktok: member.cardData.social?.tiktok || ''
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-zinc-400 text-sm flex flex-col items-center gap-2">
+                          <Ban className="w-8 h-8 opacity-50" />
+                          <span>No hay diseño disponible</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 border-t border-zinc-100 flex justify-between gap-2">
+                      <button 
+                        onClick={() => openEditModal(member)}
+                        className="flex-1 py-2 text-sm font-medium text-zinc-700 bg-zinc-100 hover:bg-zinc-200 rounded-xl transition-colors"
+                      >
+                        Campos
+                      </button>
+                      {member.cardId && (
+                        <button 
+                          onClick={() => navigate(`/edit/${member.cardId}`)}
+                          className="flex-1 py-2 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-xl transition-colors"
+                        >
+                          Editar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-zinc-50 border-b border-zinc-200">
+                        <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Nombre</th>
+                        <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Email</th>
+                        <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Tarjeta Activa</th>
+                        <th className="px-6 py-4 text-sm font-semibold text-zinc-900">Estado</th>
+                        <th className="px-6 py-4 text-sm font-semibold text-zinc-900 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {members.map(member => (
+                        <tr key={member.uid} className="hover:bg-zinc-50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-medium text-zinc-900">{member.name}</div>
+                          </td>
+                          <td className="px-6 py-4 text-zinc-600">{member.email}</td>
+                          <td className="px-6 py-4">
+                            {member.cardId ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                <Check className="w-3 h-3" /> Sí
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 text-zinc-600">
+                                No
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                              member.status === 'active' 
+                                ? 'bg-blue-100 text-blue-800' 
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {member.status === 'active' ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {viewMode === 'edit' && member.cardId && (
+                                <button 
+                                  onClick={() => navigate(`/edit/${member.cardId}`)}
+                                  className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors flex items-center gap-1 text-sm font-medium"
+                                  title="Editar tarjeta completa"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                  Editar
+                                </button>
+                              )}
+                              {member.cardId && (
+                                <button 
+                                  onClick={() => window.open(`/c/${member.cardId}`, '_blank')}
+                                  className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                                  title="Ver tarjeta"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => openEditModal(member)}
+                                className="p-2 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Editar campos personalizados"
+                              >
+                                <FileSpreadsheet className="w-4 h-4" />
+                              </button>
+                              {member.status === 'active' && (
+                                <button 
+                                  onClick={() => handleDeactivate(member.uid)}
+                                  className="p-2 text-zinc-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                                  title="Desactivar miembro"
+                                >
+                                  <Ban className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button 
+                                onClick={() => handleDelete(member.uid)}
+                                className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar miembro"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {members.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
+                            No hay miembros en esta empresa.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </main>
 
       {/* Edit Custom Fields Modal */}

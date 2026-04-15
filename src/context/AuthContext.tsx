@@ -72,8 +72,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
+        // Determine current role to avoid permission errors
+        const currentRole = userSnap.exists() ? userSnap.data().role : (currentUser.email === 'beatriz@aidea.es' ? 'admin' : 'free');
+
         // Link existing cards with the same email to this user
-        if (!currentUser.isAnonymous && currentUser.email) {
+        if (!currentUser.isAnonymous && currentUser.email && currentRole !== 'company_admin' && currentRole !== 'enterprise') {
           try {
             const cardsQuery = query(collection(db, 'cards'), where('contact.email', '==', currentUser.email));
             const cardsSnap = await getDocs(cardsQuery);

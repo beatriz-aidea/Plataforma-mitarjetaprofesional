@@ -49,12 +49,23 @@ service cloud.firestore {
       );
     }
     
+    function isCompanyAdmin() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'company_admin'
+      );
+    }
+    
+    function getUserCompanyId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.companyId;
+    }
+    
     // Domain Validators
     function isValidUser() {
       return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'updatedAt', 'companyId', 'companyName', 'isAnonymous']) &&
              request.resource.data.uid is string &&
              request.resource.data.email is string &&
-             request.resource.data.role in ['free', 'pending', 'subscription', 'enterprise', 'admin'] &&
+             request.resource.data.role in ['free', 'pending', 'subscription', 'enterprise', 'admin', 'company_admin'] &&
              request.resource.data.createdAt is timestamp &&
              (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
              (!('isAnonymous' in request.resource.data) || request.resource.data.isAnonymous is bool) &&
@@ -119,7 +130,7 @@ service cloud.firestore {
     // ===============================================================
     
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isOwner(userId) || isAdmin() || (isCompanyAdmin() && resource.data.companyId == getUserCompanyId());
       allow create: if isAuthenticated() && 
                     (isOwner(userId) || isAdmin()) && 
                     isValidUser() && 
@@ -133,14 +144,14 @@ service cloud.firestore {
 
     match /cards/{cardId} {
       // Anyone can read an active card (for public sharing)
-      allow read: if resource.data.status == 'active' || isDocOwner() || isAdmin();
-      allow list: if isAdmin() || (isAuthenticated() && request.query.limit == 1);
+      allow read: if resource.data.status == 'active' || isDocOwner() || isAdmin() || (isCompanyAdmin() && get(/databases/$(database)/documents/users/$(resource.data.ownerUid)).data.companyId == getUserCompanyId());
+      allow list: if isAdmin() || (isAuthenticated() && request.query.limit == 1) || (isCompanyAdmin() && get(/databases/$(database)/documents/users/$(resource.data.ownerUid)).data.companyId == getUserCompanyId());
       allow create: if isAuthenticated() && 
                     (request.resource.data.ownerUid == request.auth.uid || isAdmin()) && 
                     isValidCard() && 
                     ownerUidUnchanged();
       allow update: if isAuthenticated() && 
-                    (isDocOwner() || isAdmin()) && 
+                    (isDocOwner() || isAdmin() || (isCompanyAdmin() && get(/databases/$(database)/documents/users/$(resource.data.ownerUid)).data.companyId == getUserCompanyId())) && 
                     isValidCard() && 
                     ownerUidNotModified() &&
                     request.resource.data.createdAt == resource.data.createdAt; // Immutable createdAt
@@ -165,6 +176,10 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidProduct();
       allow update: if isAdmin() && isValidProduct() && request.resource.data.createdAt == resource.data.createdAt;
       allow delete: if isAdmin();
+    }
+
+    match /companies/{companyId} {
+      allow read: if isAdmin() || (isCompanyAdmin() && companyId == getUserCompanyId());
     }
 
     match /customFields/{fieldId} {
