@@ -37,7 +37,7 @@ export default function CompanyDashboard() {
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'members' | 'settings'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'settings' | 'design'>('members');
   const [viewMode, setViewMode] = useState<'list' | 'gallery' | 'edit'>('list');
 
   useEffect(() => {
@@ -61,51 +61,59 @@ export default function CompanyDashboard() {
           setCompany({ id: companyDoc.id, ...companyDoc.data() } as Company);
         }
 
-        // Fetch members
+        // Fetch members (users)
         const usersQuery = query(collection(db, 'users'), where('companyId', '==', companyId));
         const usersSnap = await getDocs(usersQuery);
         
-        const membersData: Member[] = [];
+        // Fetch all cards for this company
+        const allCardsQuery = query(collection(db, 'cards'), where('companyId', '==', companyId));
+        const allCardsSnap = await getDocs(allCardsQuery);
         
+        const membersMap = new Map<string, Member>();
+        
+        // Process users
         for (const userDoc of usersSnap.docs) {
           const userData = userDoc.data();
-          
-          // Fetch card for this user to get name and cardId
-          const cardsQuery = query(
-            collection(db, 'cards'), 
-            where('ownerUid', '==', userDoc.id),
-            where('companyId', '==', companyId),
-            limit(1)
-          );
-          const cardsSnap = await getDocs(cardsQuery);
-          
-          let cardId = undefined;
-          let name = userData.email || 'Usuario';
-          let customFieldValues = {};
-          let cardData = undefined;
-          
-          if (!cardsSnap.empty) {
-            const cardDoc = cardsSnap.docs[0];
-            cardId = cardDoc.id;
-            cardData = cardDoc.data();
-            if (cardData.identity?.firstName || cardData.identity?.lastName) {
-              name = `${cardData.identity?.firstName || ''} ${cardData.identity?.lastName || ''}`.trim();
-            }
-            customFieldValues = cardData.customFieldValues || {};
-          }
-
-          membersData.push({
+          membersMap.set(userDoc.id, {
             uid: userDoc.id,
-            email: userData.email,
-            name,
+            email: userData.email || '',
+            name: userData.email || 'Usuario',
             status: userData.status || 'active',
-            cardId,
-            customFieldValues,
-            cardData
           });
         }
         
-        setMembers(membersData);
+        // Process cards and merge
+        for (const cardDoc of allCardsSnap.docs) {
+          const cardData = cardDoc.data();
+          const cardId = cardDoc.id;
+          const ownerUid = cardData.ownerUid;
+          
+          let name = 'Usuario';
+          if (cardData.identity?.firstName || cardData.identity?.lastName) {
+            name = `${cardData.identity?.firstName || ''} ${cardData.identity?.lastName || ''}`.trim();
+          }
+          
+          if (membersMap.has(ownerUid)) {
+            const member = membersMap.get(ownerUid)!;
+            member.cardId = cardId;
+            member.cardData = cardData;
+            member.customFieldValues = cardData.customFieldValues || {};
+            if (name !== 'Usuario') member.name = name;
+          } else {
+            // Card exists but no dedicated user document (e.g. created by company admin)
+            membersMap.set(cardId, { // Use cardId as uid for these shadow members
+              uid: cardId,
+              email: cardData.contact?.email || 'Sin email',
+              name: name,
+              status: cardData.status || 'active',
+              cardId: cardId,
+              cardData: cardData,
+              customFieldValues: cardData.customFieldValues || {}
+            });
+          }
+        }
+        
+        setMembers(Array.from(membersMap.values()));
       } catch (error) {
         console.error("Error fetching company data:", error);
       } finally {
@@ -256,6 +264,13 @@ export default function CompanyDashboard() {
               <Download className="w-4 h-4" />
               Exportar CSV
             </button>
+            <button 
+              onClick={() => navigate('/edit')}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 font-medium text-sm transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo Empleado
+            </button>
           </div>
         </div>
 
@@ -286,7 +301,35 @@ export default function CompanyDashboard() {
               Configuración de Campos
             </div>
           </button>
+          <button
+            onClick={() => setActiveTab('design')}
+            className={`px-6 py-3 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'design' 
+                ? 'border-brand-600 text-brand-600' 
+                : 'border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4" />
+              Diseño Corporativo
+            </div>
+          </button>
         </div>
+
+        {activeTab === 'design' && (
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-8 text-center">
+            <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Palette className="w-8 h-8 text-brand-600" />
+            </div>
+            <h2 className="text-xl font-bold text-zinc-900 mb-2">Diseño Corporativo</h2>
+            <p className="text-zinc-600 mb-6 max-w-md mx-auto">
+              Configura los colores, logotipo y plantillas por defecto para todas las tarjetas de tus empleados.
+            </p>
+            <button className="px-6 py-3 bg-brand-600 text-white font-medium rounded-xl hover:bg-brand-700 transition-colors">
+              Configurar Diseño
+            </button>
+          </div>
+        )}
 
         {activeTab === 'settings' ? (
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">

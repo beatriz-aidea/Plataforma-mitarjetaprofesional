@@ -55,7 +55,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } else {
           const data = userSnap.data();
-          console.log("AuthContext: User document found for UID:", currentUser.uid, "with role:", data.role);
           setCompanyId(data.companyId || null);
           // If Beatriz already exists but doesn't have admin role, update it
           if (currentUser.email === 'beatriz@aidea.es' && data.role !== 'admin') {

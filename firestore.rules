@@ -180,6 +180,9 @@ service cloud.firestore {
 
     match /companies/{companyId} {
       allow read: if isAdmin() || (isCompanyAdmin() && companyId == getUserCompanyId());
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (isCompanyAdmin() && companyId == getUserCompanyId());
+      allow delete: if isAdmin();
     }
 
     match /customFields/{fieldId} {

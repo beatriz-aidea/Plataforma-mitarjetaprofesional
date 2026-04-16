@@ -357,7 +357,8 @@ export default function Store() {
                                       className={`p-2 rounded-lg border text-left transition-all ${selectedProduct.optionId === option.id ? 'border-brand-600 bg-brand-50 ring-1 ring-brand-600' : 'border-zinc-200 hover:border-zinc-300'}`}
                                     >
                                       <div className="font-medium text-sm text-zinc-900 leading-tight">{option.name}</div>
-                                      <div className="text-brand-600 font-bold text-sm mt-1">{option.price}€</div>
+                                      <div className="text-brand-600 font-bold text-sm mt-1">{Number(option.price).toFixed(2)}€</div>
+                                      <div className="text-[10px] text-zinc-400 mt-0.5">IVA NO INCLUIDO</div>
                                     </button>
                                   ))}
                                 </div>
@@ -389,7 +390,8 @@ export default function Store() {
                                       </div>
                                       <div className="p-2 text-left">
                                         <div className="font-medium text-xs text-zinc-900 truncate">{product.name}</div>
-                                        <div className="text-brand-600 font-bold text-sm mt-0.5">{product.price}€</div>
+                                        <div className="text-brand-600 font-bold text-sm mt-0.5">{Number(product.price).toFixed(2)}€</div>
+                                        <div className="text-[10px] text-zinc-400 mt-0.5">IVA NO INCLUIDO</div>
                                       </div>
                                     </button>
                                   )) : (
@@ -799,7 +801,7 @@ export default function Store() {
                     <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 mb-6">
                       <div className="flex justify-between mb-2">
                         <span className="text-zinc-600">{selectedProduct.name}</span>
-                        <span className="font-medium">{selectedProduct.price}€</span>
+                        <span className="font-medium">{Number(selectedProduct.price).toFixed(2)}€</span>
                       </div>
                       <div className="flex justify-between mb-4">
                         <span className="text-zinc-600">Envío</span>
@@ -807,8 +809,9 @@ export default function Store() {
                       </div>
                       <div className="flex justify-between pt-4 border-t border-zinc-200 font-bold text-lg">
                         <span>Total</span>
-                        <span>{selectedProduct.price}€</span>
+                        <span>{Number(selectedProduct.price).toFixed(2)}€</span>
                       </div>
+                      <div className="text-right text-[10px] text-zinc-400 mt-1">IVA NO INCLUIDO</div>
                     </div>
 
                     <div className="space-y-4">
@@ -840,7 +843,7 @@ export default function Store() {
                         disabled={isSubmitting}
                         className="flex-1 py-3 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50 flex flex-col items-center justify-center gap-0.5"
                       >
-                        {isSubmitting ? 'Procesando...' : <span>Pagar {selectedProduct.price}€</span>}
+                        {isSubmitting ? 'Procesando...' : <span>Pagar {Number(selectedProduct.price).toFixed(2)}€</span>}
                         {!isSubmitting && <span className="text-[10px] font-normal opacity-80 text-center leading-tight">IVA NO INCLUIDO<br/>PORTES INCLUIDOS<br/>ENTREGA 7-10 DÍAS</span>}
                       </button>
                     </div>
@@ -940,7 +943,7 @@ export default function Store() {
                     )}
 
                     <div className="mt-6">
-                      <div className="text-2xl font-bold text-brand-600">{selectedProduct.price}€</div>
+                      <div className="text-2xl font-bold text-brand-600">{Number(selectedProduct.price).toFixed(2)}€</div>
                       <div className="text-[10px] text-zinc-500 font-medium mt-1 leading-tight">
                         IVA NO INCLUIDO<br/>PORTES INCLUIDOS<br/>ENTREGA 7-10 DÍAS
                       </div>

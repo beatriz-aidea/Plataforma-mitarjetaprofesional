@@ -759,7 +759,7 @@ export default function CreateCard() {
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Modificación ilimitada</li>
                   </ul>
                   <button type="button" onClick={() => navigate('/crear')} className="w-full py-2 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition-colors">
-                    Suscribirse (Pasarela de pago)
+                    Suscribirse
                   </button>
                 </div>
 
@@ -777,7 +777,7 @@ export default function CreateCard() {
                     <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-500" /> Compartir tarjeta online</li>
                   </ul>
                   <button type="button" onClick={() => navigate('/crear')} className="w-full py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 transition-colors">
-                    Suscribirse (Pasarela de pago)
+                    Suscribirse
                   </button>
                 </div>
 

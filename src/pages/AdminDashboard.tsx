@@ -20,8 +20,10 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
 
   const [showProductModal, setShowProductModal] = useState(false);
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [companyModalError, setCompanyModalError] = useState('');
   const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
   const [newCompany, setNewCompany] = useState({
     name: '',
@@ -118,9 +120,6 @@ export default function AdminDashboard() {
           navigate('/');
           return;
         }
-
-        console.log("AdminDashboard: Current user email:", auth.currentUser.email);
-        console.log("AdminDashboard: Current user uid:", auth.currentUser.uid);
 
         // Fetch all users
         const usersSnapshot = await getDocs(collection(db, 'users'));
@@ -287,10 +286,10 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddProduct = async (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const productId = crypto.randomUUID();
+      const productId = editingProductId || crypto.randomUUID();
       const productData = {
         id: productId,
         name: newProduct.name,
@@ -299,16 +298,41 @@ export default function AdminDashboard() {
         features: newProduct.features || '',
         colors: newProduct.colors || '',
         datasheetUrl: newProduct.datasheetUrl || '',
-        createdAt: serverTimestamp()
+        updatedAt: serverTimestamp()
       };
-      await setDoc(doc(db, 'products', productId), productData);
-      setProducts([{ ...productData, createdAt: new Date() }, ...products]);
+
+      if (!editingProductId) {
+        (productData as any).createdAt = serverTimestamp();
+      }
+
+      await setDoc(doc(db, 'products', productId), productData, { merge: true });
+      
+      if (editingProductId) {
+        setProducts(products.map(p => p.id === productId ? { ...p, ...productData } : p));
+      } else {
+        setProducts([{ ...productData, createdAt: new Date() }, ...products]);
+      }
+      
       setShowProductModal(false);
+      setEditingProductId(null);
       setNewProduct({ name: '', price: 0, imageUrl: '', features: '', colors: '', datasheetUrl: '' });
     } catch (error) {
-      console.error("Error adding product:", error);
-      alert("Error al añadir el producto");
+      console.error("Error saving product:", error);
+      alert("Error al guardar el producto");
     }
+  };
+
+  const handleEditProduct = (product: any) => {
+    setNewProduct({
+      name: product.name || '',
+      price: product.price || 0,
+      imageUrl: product.imageUrl || '',
+      features: product.features || '',
+      colors: product.colors || '',
+      datasheetUrl: product.datasheetUrl || ''
+    });
+    setEditingProductId(product.id);
+    setShowProductModal(true);
   };
 
   const handleAddField = async (e: React.FormEvent) => {
@@ -334,6 +358,7 @@ export default function AdminDashboard() {
 
   const handleSaveCompany = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCompanyModalError('');
     try {
       let adminUid = '';
       if (newCompany.adminEmail) {
@@ -341,21 +366,32 @@ export default function AdminDashboard() {
         if (user) {
           adminUid = user.id;
         } else {
-          alert('No se encontró ningún usuario con ese email.');
+          setCompanyModalError('No se encontró ningún usuario con ese email.');
           return;
         }
       }
 
+      // Sanitize customFields to remove undefined values which Firestore rejects
+      const sanitizedCustomFields = (newCompany.customFields || []).map(field => {
+        const sanitized = { ...field };
+        Object.keys(sanitized).forEach(key => {
+          if (sanitized[key] === undefined) {
+            delete sanitized[key];
+          }
+        });
+        return sanitized;
+      });
+
       const companyId = editingCompanyId || crypto.randomUUID();
       const companyData = {
-        name: newCompany.name,
-        type: newCompany.type,
-        templateId: newCompany.templateId,
-        customFields: newCompany.customFields,
-        parentCompanyId: newCompany.parentCompanyId,
+        name: newCompany.name || '',
+        type: newCompany.type || 'empresa',
+        templateId: newCompany.templateId || '',
+        customFields: sanitizedCustomFields,
+        parentCompanyId: newCompany.parentCompanyId || '',
         adminUid: adminUid,
-        logoUrl: newCompany.logoUrl,
-        status: newCompany.status,
+        logoUrl: newCompany.logoUrl || '',
+        status: newCompany.status || 'activo',
         updatedAt: serverTimestamp()
       };
 
@@ -384,7 +420,7 @@ export default function AdminDashboard() {
       setNewCompany({ name: '', type: 'empresa', templateId: '', customFields: [], parentCompanyId: '', adminEmail: '', logoUrl: '', status: 'activo' });
     } catch (error) {
       console.error("Error saving company:", error);
-      alert("Error al guardar la empresa");
+      setCompanyModalError(`Error al guardar la empresa: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   };
 
@@ -409,14 +445,14 @@ export default function AdminDashboard() {
     setNewCompany(prev => ({
       ...prev,
       templateId,
-      customFields: template ? [...template.fields] : []
+      customFields: template ? [...(template.fields || [])] : []
     }));
   };
 
   const handleAddCompanyCustomField = () => {
     setNewCompany(prev => ({
       ...prev,
-      customFields: [...prev.customFields, { label: '', type: 'text', required: false, options: [] }]
+      customFields: [...(prev.customFields || []), { label: '', type: 'text', required: false, options: [] }]
     }));
   };
 
@@ -547,12 +583,12 @@ export default function AdminDashboard() {
             Productos NFC
           </button>
           <button
-            onClick={() => setActiveTab('customFields')}
+            onClick={() => setActiveTab('orders')}
             className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'customFields' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              activeTab === 'orders' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
             }`}
           >
-            Campos Extra
+            Pedidos
           </button>
         </div>
 
@@ -865,8 +901,18 @@ export default function AdminDashboard() {
                         )}
                       </td>
                       <td className="px-6 py-4 font-medium text-zinc-900">{product.name}</td>
-                      <td className="px-6 py-4 text-zinc-500">{product.price}€</td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-zinc-500">
+                        <div>{Number(product.price).toFixed(2)}€</div>
+                        <div className="text-[10px] text-zinc-400 mt-0.5">IVA NO INCLUIDO</div>
+                      </td>
+                      <td className="px-6 py-4 flex items-center gap-2">
+                        <button 
+                          onClick={() => handleEditProduct(product)}
+                          className="p-2 text-zinc-600 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                         <button 
                           onClick={() => confirmDelete('product', product.id)}
                           className="p-2 text-zinc-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -883,52 +929,59 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Custom Fields Table */}
-        {activeTab === 'customFields' && (
+        {/* Orders Table */}
+        {activeTab === 'orders' && (
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
-              <h2 className="font-bold text-lg text-zinc-900">Gestión de Campos Extra</h2>
-              <button 
-                onClick={() => setShowFieldModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Añadir Campo
-              </button>
+              <h2 className="font-bold text-lg text-zinc-900">Gestión de Pedidos</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                   <tr>
-                    <th className="px-6 py-3 font-medium">Etiqueta</th>
-                    <th className="px-6 py-3 font-medium">Tipo</th>
-                    <th className="px-6 py-3 font-medium">Icono</th>
-                    <th className="px-6 py-3 font-medium">Acciones</th>
+                    <th className="px-6 py-3 font-medium">ID Pedido</th>
+                    <th className="px-6 py-3 font-medium">Usuario</th>
+                    <th className="px-6 py-3 font-medium">Estado</th>
+                    <th className="px-6 py-3 font-medium">Fecha</th>
+                    <th className="px-6 py-3 font-medium">Dirección</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {customFields.length === 0 ? (
+                  {orders.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
-                        No hay campos extra definidos.
+                      <td colSpan={5} className="px-6 py-8 text-center text-zinc-500">
+                        No hay pedidos registrados.
                       </td>
                     </tr>
-                  ) : customFields.map(field => (
-                    <tr key={field.id} className="hover:bg-zinc-50">
-                      <td className="px-6 py-4 font-medium text-zinc-900">{field.label}</td>
-                      <td className="px-6 py-4 text-zinc-500 uppercase">{field.type}</td>
-                      <td className="px-6 py-4 text-zinc-500">{field.icon || '-'}</td>
-                      <td className="px-6 py-4">
-                        <button 
-                          onClick={() => confirmDelete('field', field.id)}
-                          className="p-2 text-zinc-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : orders.map(order => {
+                    const user = users.find(u => u.id === order.userId);
+                    return (
+                      <tr key={order.id} className="hover:bg-zinc-50">
+                        <td className="px-6 py-4 font-medium text-zinc-900">{order.id.slice(0, 8)}...</td>
+                        <td className="px-6 py-4 text-zinc-500">{user?.email || order.userId}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                            order.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                            order.status === 'paid' ? 'bg-emerald-100 text-emerald-800' :
+                            order.status === 'shipped' ? 'bg-purple-100 text-purple-800' :
+                            'bg-zinc-100 text-zinc-800'
+                          }`}>
+                            {order.status === 'pending' ? 'Pendiente' :
+                             order.status === 'confirmed' ? 'Confirmado' :
+                             order.status === 'paid' ? 'Pagado' :
+                             order.status === 'shipped' ? 'Enviado' : order.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-zinc-500">
+                          {order.createdAt?.toDate ? new Date(order.createdAt.toDate()).toLocaleDateString() : '-'}
+                        </td>
+                        <td className="px-6 py-4 text-zinc-500">
+                          {order.shippingAddress ? `${order.shippingAddress.street}, ${order.shippingAddress.city}` : '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1151,8 +1204,8 @@ export default function AdminDashboard() {
 
       {/* Company Modal */}
       {showCompanyModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full my-8">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold">{editingCompanyId ? 'Editar Empresa' : 'Nueva Empresa'}</h3>
               <button onClick={() => setShowCompanyModal(false)} className="text-zinc-400 hover:text-zinc-600">
@@ -1161,6 +1214,13 @@ export default function AdminDashboard() {
                 </svg>
               </button>
             </div>
+            
+            {companyModalError && (
+              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100">
+                {companyModalError}
+              </div>
+            )}
+
             <form onSubmit={handleSaveCompany} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1291,11 +1351,12 @@ export default function AdminDashboard() {
                             <option value="number">Número</option>
                             <option value="date">Fecha</option>
                             <option value="select">Desplegable</option>
+                            <option value="lista">Lista</option>
                             <option value="boolean">Sí/No</option>
                             <option value="url">URL</option>
                           </select>
                           
-                          {field.type === 'select' && (
+                          {(field.type === 'select' || field.type === 'lista') && (
                             <div className="col-span-2">
                               <input 
                                 type="text" 

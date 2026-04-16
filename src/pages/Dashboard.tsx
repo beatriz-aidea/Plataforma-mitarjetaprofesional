@@ -18,7 +18,7 @@ export default function Dashboard() {
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
 
   const isAdmin = userRole === 'admin';
-  const isEnterprise = userRole === 'enterprise';
+  const isEnterprise = userRole === 'enterprise' || userRole === 'company_admin';
   const isSubscription = userRole === 'standard' || userRole === 'premium';
 
   useEffect(() => {
@@ -119,7 +119,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-4">
             {isEnterprise && (
               <button
-                onClick={() => navigate('/enterprise')}
+                onClick={() => navigate(userRole === 'company_admin' ? '/empresa' : '/enterprise')}
                 className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
               >
                 <Building2 className="w-4 h-4" />

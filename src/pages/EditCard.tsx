@@ -265,7 +265,7 @@ export default function EditCard() {
       
       const cardRef = doc(db, 'cards', id);
       
-      const payload = {
+      const payload: any = {
         id,
         ownerUid: originalOwnerUid || (isAdmin && targetOwnerUid ? targetOwnerUid : user.uid),
         isAnonymous: user.isAnonymous,
@@ -275,8 +275,12 @@ export default function EditCard() {
         updatedAt: serverTimestamp()
       };
 
+      if (companyId) {
+        payload.companyId = companyId;
+      }
+
       if (!cardId) {
-        (payload as any).createdAt = serverTimestamp();
+        payload.createdAt = serverTimestamp();
       }
 
       await setDoc(cardRef, payload, { merge: true }).catch(err => handleFirestoreError(err, OperationType.WRITE, `cards/${id}`));
