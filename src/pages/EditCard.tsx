@@ -313,7 +313,7 @@ export default function EditCard() {
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <button onClick={() => navigate(isAdmin ? '/admin' : '/dashboard')} className="flex items-center gap-2 text-zinc-600 hover:text-zinc-900 font-medium mr-4">
+              <button onClick={() => navigate(isAdmin ? '/admin' : (userRole === 'company_admin' ? '/empresa' : '/dashboard'))} className="flex items-center gap-2 text-zinc-600 hover:text-zinc-900 font-medium mr-4">
                 <ArrowLeft className="w-5 h-5" />
                 Volver
               </button>
@@ -463,7 +463,10 @@ export default function EditCard() {
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                   <Mail className="w-4 h-4 text-brand-600" /> EMAIL CORPORATIVO
                 </label>
-                <input required type="email" value={formData.contact.email} onChange={e => handleChange('contact', 'email', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="javier@aidea.com" />
+                <div className="relative">
+                  <input readOnly disabled type="email" value={formData.contact.email} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-0 focus:outline-none bg-zinc-50 text-zinc-500 pr-12 cursor-not-allowed placeholder:text-zinc-300" placeholder="javier@aidea.com" />
+                  <Lock className="w-5 h-5 text-zinc-400 absolute right-4 top-1/2 -translate-y-1/2" />
+                </div>
               </div>
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
@@ -717,7 +720,7 @@ export default function EditCard() {
           </div>
 
           {/* More Data for Premium/Enterprise/Company */}
-          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || !!companyId) && (
+          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || userRole === 'company_admin' || !!companyId) && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm mb-8">
               <div className="flex items-center gap-3 mb-8">
                 <Users className="w-6 h-6 text-brand-600" />

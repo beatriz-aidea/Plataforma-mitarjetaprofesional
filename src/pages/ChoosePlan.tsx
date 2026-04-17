@@ -8,7 +8,6 @@ import { Check } from 'lucide-react';
 export default function ChoosePlan() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [showMessage, setShowMessage] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSelectFree = async () => {
@@ -44,11 +43,12 @@ export default function ChoosePlan() {
         plan: planName,
         createdAt: new Date()
       });
+      navigate('/crear');
     } catch (error) {
       console.error("Error processing subscription request:", error);
+      alert("Hubo un error al procesar tu solicitud. Por favor, inténtalo de nuevo.");
     } finally {
       setLoading(false);
-      setShowMessage(true);
     }
   };
 
@@ -164,26 +164,6 @@ export default function ChoosePlan() {
         </div>
       </div>
 
-      {/* Modal for Paid Plans */}
-      {showMessage && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 text-center shadow-xl">
-            <div className="w-16 h-16 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Check className="w-8 h-8" />
-            </div>
-            <h3 className="text-2xl font-bold text-zinc-900 mb-4">¡Gracias por tu interés!</h3>
-            <p className="text-zinc-600 mb-8 leading-relaxed">
-              Tu solicitud ha sido recibida, como nuestra pasarela de pago no está operativa todavía, nos pondremos en contacto contigo para indicarte cómo proceder para validar la suscripción.
-            </p>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="w-full py-3 px-4 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 transition-colors"
-            >
-              Entendido
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -421,11 +421,11 @@ export default function CreateCard() {
                   type="email" 
                   value={formData.contact.email} 
                   onChange={e => handleChange('contact', 'email', e.target.value)} 
-                  readOnly={!!(user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards))}
-                  className={`w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300 ${user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards) ? 'bg-zinc-50 cursor-not-allowed' : ''}`}
+                  readOnly={!!(user && !user.isAnonymous && userRole !== 'admin' && userRole !== 'company_admin' && (userRole !== 'premium' || !hasExistingCards))}
+                  className={`w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300 ${user && !user.isAnonymous && userRole !== 'admin' && userRole !== 'company_admin' && (userRole !== 'premium' || !hasExistingCards) ? 'bg-zinc-50 cursor-not-allowed' : ''}`}
                   placeholder="javier@aidea.com" 
                 />
-                {user && !user.isAnonymous && (userRole !== 'premium' || !hasExistingCards) && (
+                {user && !user.isAnonymous && userRole !== 'admin' && userRole !== 'company_admin' && (userRole !== 'premium' || !hasExistingCards) && (
                   <p className="mt-2 text-xs text-zinc-500">Este email está vinculado a tu cuenta de registro y no puede modificarse.</p>
                 )}
               </div>
@@ -681,7 +681,7 @@ export default function CreateCard() {
           </div>
 
           {/* More Data for Premium/Enterprise/Company */}
-          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || !!companyId) && (
+          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || userRole === 'company_admin' || !!companyId) && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm mb-8">
               <div className="flex items-center gap-3 mb-8">
                 <Users className="w-6 h-6 text-brand-600" />

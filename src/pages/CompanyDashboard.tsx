@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
-import { Building2, Users, Download, FileSpreadsheet, Eye, Edit2, Ban, Trash2, ArrowLeft, X, Check, LayoutGrid, List, Table, Settings } from 'lucide-react';
+import { Building2, Users, Download, FileSpreadsheet, Eye, Edit2, Ban, Trash2, ArrowLeft, X, Check, LayoutGrid, List, Table, Settings, Plus, Palette } from 'lucide-react';
 import Logo from '../components/Logo';
 import CardTemplate from '../components/CardTemplate';
 

@@ -1055,7 +1055,7 @@ export default function AdminDashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl my-8">
             <h3 className="text-xl font-bold text-zinc-900 mb-4">Añadir Producto NFC</h3>
-            <form onSubmit={handleAddProduct} className="space-y-4">
+            <form onSubmit={handleSaveProduct} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre del producto</label>
                 <input 

@@ -228,7 +228,7 @@ export default function Store() {
     landline: false,
     email: true,
     website: true,
-    company: false,
+    company: true,
     linkedin: false,
     instagram: false,
     twitter: false,
