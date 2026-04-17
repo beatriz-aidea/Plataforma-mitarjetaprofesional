@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { Check } from 'lucide-react';
@@ -33,16 +33,38 @@ export default function ChoosePlan() {
     try {
       const planName = e.currentTarget.textContent?.includes('Premium') ? 'Premium' : 'Standard';
       
-      await updateDoc(doc(db, 'users', user.uid), { role: 'pending' });
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const timestamp = serverTimestamp();
+
+      if (!userSnap.exists()) {
+        await setDoc(userRef, {
+          uid: user.uid,
+          email: user.email || '',
+          role: 'pending',
+          isAnonymous: user.isAnonymous || false,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+      } else {
+        await updateDoc(userRef, { 
+          role: 'pending',
+          updatedAt: timestamp
+        });
+      }
       
-      const { collection, addDoc } = await import('firebase/firestore');
-      await addDoc(collection(db, 'notifications'), {
-        type: 'new_subscription_request',
-        userEmail: user.email || '',
-        userId: user.uid,
-        plan: planName,
-        createdAt: new Date()
-      });
+      try {
+        const { collection, addDoc } = await import('firebase/firestore');
+        await addDoc(collection(db, 'notifications'), {
+          type: 'new_subscription_request',
+          userEmail: user.email || '',
+          userId: user.uid,
+          plan: planName,
+          createdAt: new Date()
+        });
+      } catch (notifErr) {
+        console.warn("Could not create notification:", notifErr);
+      }
       navigate('/crear');
     } catch (error) {
       console.error("Error processing subscription request:", error);
