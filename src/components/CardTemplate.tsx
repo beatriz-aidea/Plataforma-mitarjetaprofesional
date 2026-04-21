@@ -6,6 +6,7 @@ interface CardTemplateProps {
   color: string;
   logo: string | null;
   companyLogo?: string | null;
+  companyLogoSize?: 'S' | 'M' | 'L';
   data: {
     firstName: string;
     lastName: string;
@@ -22,7 +23,7 @@ interface CardTemplateProps {
   };
 }
 
-export default function CardTemplate({ templateId, color, logo, companyLogo, data }: CardTemplateProps) {
+export default function CardTemplate({ templateId, color, logo, companyLogo, companyLogoSize = 'M', data }: CardTemplateProps) {
   const { firstName, lastName, role, company, mobile, landline, email, website, linkedin, instagram, twitter, tiktok } = data;
   const fullName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const displayRole = [role, company].filter(Boolean).join(' - ');
@@ -51,11 +52,12 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
     );
   };
 
-  const renderCompanyLogo = (className = "h-8 w-auto max-w-[120px]") => {
+  const companyLogoSizeMap = { S: 'h-6', M: 'h-10', L: 'h-16' };
+  const renderCompanyLogo = () => {
     if (companyLogo) {
-      return <img src={companyLogo} alt="Logo empresa" className={`${className} object-contain`} />;
+      return <img src={companyLogo} alt="Logo empresa" className={`${companyLogoSizeMap[companyLogoSize ?? 'M']} w-auto max-w-[160px] object-contain`} />;
     }
-    return null;
+    return <div className={`${companyLogoSizeMap[companyLogoSize ?? 'M']} w-24 bg-zinc-200 rounded flex items-center justify-center text-[8px] font-bold text-zinc-400`}>LOGO</div>;
   };
 
   const renderContact = (className = "text-[8px] flex flex-col gap-1", iconColor = "text-zinc-500") => (
@@ -102,7 +104,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
       return (
         <div className={`w-full h-full ${bgWhite} p-6 flex flex-col justify-between relative`}>
           <div>
-            <div className="mb-3">{renderLogo("w-20 h-20")}</div>
+            <div className="mb-3">{renderCompanyLogo()}</div>
             <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
             <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
           </div>
@@ -122,7 +124,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
     case 3:
       return (
         <div className={`w-full h-full ${bgWhite} p-6 flex flex-col items-center justify-between text-center relative`}>
-          <div className="mt-2">{renderLogo("w-20 h-20")}</div>
+          <div className="mt-2">{renderCompanyLogo()}</div>
           <div>
             <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
             <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
@@ -145,7 +147,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
         <div className={`w-full h-full ${bgWhite} p-6 flex flex-col justify-between relative`}>
           <div className="absolute left-0 top-0 bottom-0 w-2" style={{ backgroundColor: color }} />
           <div className="pl-4 flex items-center gap-3">
-            {renderLogo("w-16 h-16")}
+            {renderCompanyLogo()}
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
               <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>
@@ -182,7 +184,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
       return (
         <div className={`w-full h-full ${bgBeige} p-6 flex flex-col justify-between relative`}>
           <div className="flex items-center gap-3">
-            {renderLogo("w-16 h-16")}
+            {renderCompanyLogo()}
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
               <p className="text-[9px] text-zinc-600 mt-0.5">{displayRole}</p>
@@ -195,7 +197,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
       return (
         <div className={`w-full h-full ${bgBlack} p-6 flex flex-col justify-between relative`}>
           <div className="flex items-center gap-3">
-            {renderLogo("w-16 h-16")}
+            {renderCompanyLogo()}
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wide text-white">{fullName}</h4>
               <p className="text-[9px] text-zinc-400 mt-0.5">{displayRole}</p>
@@ -229,7 +231,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
       return (
         <div className={`w-full h-full ${bgBlack} p-6 flex items-center gap-6 relative`}>
           <div className="flex-shrink-0">
-            {renderLogo("w-24 h-24")}
+            {renderCompanyLogo()}
           </div>
           <div className="w-px h-24 bg-zinc-700" />
           <div className="flex flex-col justify-between h-24 py-1">
@@ -279,7 +281,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
           </div>
           <div className="flex justify-between items-end">
             <div className="w-1/2">{renderContact()}</div>
-            <div className="w-1/2 flex justify-end">{renderLogo("w-16 h-16")}</div>
+            <div className="w-1/2 flex justify-end">{renderCompanyLogo()}</div>
           </div>
         </div>
       );
@@ -329,7 +331,7 @@ export default function CardTemplate({ templateId, color, logo, companyLogo, dat
         <div className={`w-full h-full ${bgWhite} p-6 flex flex-col justify-between relative`}>
           <div className="absolute left-0 top-0 bottom-0 w-8" style={{ backgroundColor: color }} />
           <div className="pl-6 flex items-center gap-3">
-            {renderLogo("w-14 h-14")}
+            {renderCompanyLogo()}
             <div>
               <h4 className="text-sm font-bold uppercase tracking-wide">{fullName}</h4>
               <p className="text-[9px] text-zinc-500 mt-0.5">{displayRole}</p>

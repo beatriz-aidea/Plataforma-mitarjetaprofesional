@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
 import CardTemplate from '../components/CardTemplate';
 import Logo from '../components/Logo';
@@ -57,7 +58,7 @@ export default function Store() {
   
   const [selectedCard, setSelectedCard] = useState<string>('');
   
-  const [expandedCategory, setExpandedCategory] = useState<string | null>('classic');
+  const [expandedCategory, setExpandedCategory] = useState<string | null>('pvc');
   const [selectedProduct, setSelectedProduct] = useState<any>({
     categoryId: 'classic',
     optionId: 'classic-100',
@@ -162,12 +163,37 @@ export default function Store() {
     }
   };
 
+  const uploadFileToStorage = async (dataUrl: string, path: string): Promise<string> => {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    const storageRef = ref(storage, path);
+    await uploadBytes(storageRef, blob);
+    return await getDownloadURL(storageRef);
+  };
+
   const handleCheckout = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !selectedCard) return;
     
     setIsSubmitting(true);
     try {
+      let customDesignStorageUrl = '';
+      let logoStorageUrl = '';
+
+      if (designMode === 'custom' && customDesignImage) {
+        customDesignStorageUrl = await uploadFileToStorage(
+          customDesignImage,
+          `orders/${user.uid}/${Date.now()}_design`
+        );
+      }
+
+      if (logoPreview) {
+        logoStorageUrl = await uploadFileToStorage(
+          logoPreview,
+          `orders/${user.uid}/${Date.now()}_logo`
+        );
+      }
+
       const orderId = crypto.randomUUID();
       await setDoc(doc(db, 'orders', orderId), {
         id: orderId,
@@ -179,9 +205,9 @@ export default function Store() {
         designMode: selectedProduct.isCard ? designMode : null,
         design: selectedProduct.isCard ? (designMode === 'template' ? selectedDesign.id : 'custom') : null,
         corporateColor: selectedProduct.isCard ? corporateColor : null,
-        logoUrl: selectedProduct.isCard && designMode === 'template' ? (logoPreview || '') : '', 
+        logoUrl: logoStorageUrl, 
         qrLogoUrl: selectedProduct.isCard ? (qrLogoPreview || '') : '',
-        customDesignUrl: selectedProduct.isCard && designMode === 'custom' ? (customDesignImage || '') : '',
+        customDesignUrl: customDesignStorageUrl,
         status: 'paid',
         billingAddress: billing,
         billingType: billingType,
@@ -220,7 +246,7 @@ export default function Store() {
   };
 
   const [selectedFields, setSelectedFields] = useState<Record<string, boolean>>({
-    logo: true,
+    logo: false,
     firstName: true,
     lastName: true,
     role: true,
@@ -489,6 +515,7 @@ export default function Store() {
                                       color={corporateColor}
                                       logo={selectedFields.logo ? logoPreview : undefined}
                                       companyLogo={activeCardData?.identity?.companyLogoUrl || null}
+                                      companyLogoSize={activeCardData?.settings?.companyLogoSize || 'M'}
                                       data={templateData}
                                     />
                                   </div>
@@ -521,7 +548,6 @@ export default function Store() {
                           <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               {Object.entries({
-                                logo: 'Logo / Foto',
                                 firstName: 'Nombre',
                                 lastName: 'Apellidos',
                                 mobile: 'Móvil',
@@ -544,6 +570,7 @@ export default function Store() {
                             {showAllFields && (
                               <div className="grid grid-cols-2 gap-3 pt-3 border-t border-zinc-100">
                                 {Object.entries({
+                                  logo: 'Foto de perfil',
                                   role: 'Cargo',
                                   company: 'Empresa',
                                   linkedin: 'LinkedIn',
@@ -581,7 +608,7 @@ export default function Store() {
                           <div className="border-2 border-dashed border-zinc-300 rounded-xl p-8 text-center hover:bg-zinc-50 transition-colors relative">
                             <input 
                               type="file" 
-                              accept="image/jpeg, image/png, application/pdf" 
+                              accept="image/jpeg, image/png, image/svg+xml, application/pdf" 
                               onChange={handleCustomDesignUpload}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             />
@@ -871,9 +898,27 @@ export default function Store() {
                         {designMode === 'custom' ? (
                           customDesignImage ? (
                             customDesignImage.startsWith('data:application/pdf') ? (
-                              <embed src={customDesignImage} type="application/pdf" className="w-full h-full rounded-2xl" />
+                              <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-zinc-50 rounded-2xl">
+                                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#a1a1aa" strokeWidth="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                <div className="text-center">
+                                  <p className="text-sm font-medium text-zinc-700">Diseño PDF cargado</p>
+                                  <p className="text-xs text-zinc-400 mt-1 text-center px-4">
+                                    Los archivos PDF no pueden previsualizarse en el navegador.<br/>
+                                    Te enviaremos una muestra visual por email para tu confirmación antes de imprimir.
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-lg">
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                  <span className="text-xs font-medium text-emerald-700">PDF con sangrado listo</span>
+                                </div>
+                              </div>
                             ) : (
-                              <img src={customDesignImage} alt="Tu diseño" className="w-full h-full object-cover" style={{ imageOrientation: 'from-image' }} />
+                              <img
+                                src={customDesignImage}
+                                alt="Tu diseño"
+                                className="w-full h-full object-cover rounded-2xl"
+                                style={{ imageOrientation: 'from-image' }}
+                              />
                             )
                           ) : (
                             <div className="text-zinc-400 flex flex-col items-center">
@@ -887,6 +932,7 @@ export default function Store() {
                             color={corporateColor} 
                             logo={selectedFields.logo ? logoPreview : undefined}
                             companyLogo={activeCardData?.identity?.companyLogoUrl || null}
+                            companyLogoSize={activeCardData?.settings?.companyLogoSize || 'M'}
                             data={templateData} 
                           />
                         )}

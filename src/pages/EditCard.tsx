@@ -34,6 +34,7 @@ export default function EditCard() {
       qrLogoUrl: '',
       showPhoto: true,
       showLogo: true,
+      companyLogoSize: 'M',
       primaryColor: '#000000',
       secondaryColor1: '#ffffff',
       secondaryColor2: '#f4f4f5'
@@ -58,6 +59,29 @@ export default function EditCard() {
         setAvailableCustomFields(fieldsData);
 
         if (!cardId) {
+          if (companyId) {
+            try {
+              const companyDoc = await getDoc(doc(db, 'companies', companyId));
+              if (companyDoc.exists()) {
+                const companyData = companyDoc.data();
+                setFormData(prev => ({
+                  ...prev,
+                  identity: {
+                    ...prev.identity,
+                    company: companyData.name || '',
+                    companyLogoUrl: companyData.logoUrl || companyData.logo || '',
+                  },
+                  settings: {
+                    ...prev.settings,
+                    primaryColor: companyData.primaryColor || prev.settings.primaryColor,
+                  },
+                  customFields: companyData.customFields || [],
+                }));
+              }
+            } catch (error) {
+              console.error('Error cargando datos de empresa:', error);
+            }
+          }
           setInitialLoading(false);
           return;
         }
@@ -436,6 +460,25 @@ export default function EditCard() {
                       </label>
                     </div>
                   </div>
+                  <div className="mt-3">
+                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Tamaño del logotipo</label>
+                    <div className="flex gap-2">
+                      {(['S', 'M', 'L'] as const).map(size => (
+                        <button
+                          key={size}
+                          type="button"
+                          onClick={() => handleChange('settings', 'companyLogoSize', size)}
+                          className={`flex-1 py-2 rounded-xl border-2 font-bold text-sm transition-colors ${
+                            formData.settings.companyLogoSize === size
+                              ? 'border-brand-600 bg-brand-50 text-brand-700'
+                              : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'
+                          }`}
+                        >
+                          {size}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
             </div>
           </section>
@@ -720,7 +763,7 @@ export default function EditCard() {
           </div>
 
           {/* More Data for Premium/Enterprise/Company */}
-          {(userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || userRole === 'company_admin' || !!companyId) && (
+          {userRole !== 'company_admin' && (userRole === 'premium' || userRole === 'enterprise' || userRole === 'admin' || userRole === 'company_admin' || !!companyId) && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm mb-8">
               <div className="flex items-center gap-3 mb-8">
                 <Users className="w-6 h-6 text-brand-600" />
@@ -789,31 +832,33 @@ export default function EditCard() {
           )}
 
           {/* Subscription Section */}
-          <section id="suscribete" className="mt-12 bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
-            <h3 className="text-2xl font-bold text-zinc-900 mb-6 text-center">Gestión de Plan</h3>
-            
-            <div className="flex flex-col items-center gap-4 py-8 text-center">
-              <p className="text-zinc-600 mb-4">
-                {userRole === 'free' 
-                  ? 'Actualmente estás en el plan gratuito. Suscríbete para desbloquear todas las funcionalidades.'
-                  : '¿Quieres cambiar o gestionar tu plan actual?'}
-              </p>
-              <button 
-                type="button"
-                onClick={() => {
-                  const plansSection = document.getElementById('planes');
-                  if (plansSection) {
-                    plansSection.scrollIntoView({ behavior: 'smooth' });
-                  } else {
-                    navigate('/#planes');
-                  }
-                }}
-                className="px-8 py-4 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
-              >
-                Ver Planes de Suscripción
-              </button>
-            </div>
-          </section>
+          {userRole !== 'company_admin' && (
+            <section id="suscribete" className="mt-12 bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <h3 className="text-2xl font-bold text-zinc-900 mb-6 text-center">Gestión de Plan</h3>
+              
+              <div className="flex flex-col items-center gap-4 py-8 text-center">
+                <p className="text-zinc-600 mb-4">
+                  {userRole === 'free' 
+                    ? 'Actualmente estás en el plan gratuito. Suscríbete para desbloquear todas las funcionalidades.'
+                    : '¿Quieres cambiar o gestionar tu plan actual?'}
+                </p>
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const plansSection = document.getElementById('planes');
+                    if (plansSection) {
+                      plansSection.scrollIntoView({ behavior: 'smooth' });
+                    } else {
+                      navigate('/#planes');
+                    }
+                  }}
+                  className="px-8 py-4 bg-brand-600 text-white rounded-xl font-bold hover:bg-brand-700 transition-all shadow-lg shadow-brand-600/20"
+                >
+                  Ver Planes de Suscripción
+                </button>
+              </div>
+            </section>
+          )}
         </form>
       </main>
     </div>

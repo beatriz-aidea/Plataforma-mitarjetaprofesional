@@ -269,7 +269,7 @@ export default function CompanyDashboard() {
               className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl hover:bg-brand-700 font-medium text-sm transition-colors"
             >
               <Plus className="w-4 h-4" />
-              Nuevo Empleado
+              Nuevo miembro
             </button>
           </div>
         </div>
