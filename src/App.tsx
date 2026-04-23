@@ -15,6 +15,12 @@ import EnterpriseContact from './pages/EnterpriseContact';
 import ChoosePlan from './pages/ChoosePlan';
 import CompanyDashboard from './pages/CompanyDashboard';
 
+import CrearTarjetaApp from './pages/CrearTarjetaApp';
+import CrearEstaticaApp from './pages/CrearEstaticaApp';
+import CrearEstaticaResultadoApp from './pages/CrearEstaticaResultadoApp';
+import CrearDinamicaApp from './pages/CrearDinamicaApp';
+import CrearDinamicaResultadoApp from './pages/CrearDinamicaResultadoApp';
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
@@ -39,6 +45,12 @@ export default function App() {
             <Route path="/success/:cardId" element={<SuccessCard />} />
             <Route path="/enterprise-contact" element={<EnterpriseContact />} />
             <Route path="/c/:cardId" element={<PublicCard />} />
+
+            <Route path="/app/crear" element={<CrearTarjetaApp />} />
+            <Route path="/app/crear/estatica" element={<CrearEstaticaApp />} />
+            <Route path="/app/crear/estatica/resultado" element={<CrearEstaticaResultadoApp />} />
+            <Route path="/app/crear/dinamica" element={<CrearDinamicaApp />} />
+            <Route path="/app/crear/dinamica/resultado" element={<CrearDinamicaResultadoApp />} />
           </Routes>
         </Router>
       </AuthProvider>

@@ -68,6 +68,8 @@ export default function Store() {
   });
 
   const [designMode, setDesignMode] = useState<'template' | 'custom'>('template');
+  const [customDesignSides, setCustomDesignSides] = useState<'1' | '2'>('1');
+  const [customDesignImageBack, setCustomDesignImageBack] = useState<string | null>(null);
   const [customDesignImage, setCustomDesignImage] = useState<string | null>(null);
   const [selectedDesign, setSelectedDesign] = useState(DESIGNS[0]);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -163,6 +165,19 @@ export default function Store() {
     }
   };
 
+  const handleCustomDesignBackUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        alert('El archivo es demasiado grande. Máximo 10MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setCustomDesignImageBack(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   const uploadFileToStorage = async (dataUrl: string, path: string): Promise<string> => {
     const response = await fetch(dataUrl);
     const blob = await response.blob();
@@ -187,6 +202,14 @@ export default function Store() {
         );
       }
 
+      let customDesignBackStorageUrl = '';
+      if (customDesignSides === '2' && customDesignImageBack) {
+        customDesignBackStorageUrl = await uploadFileToStorage(
+          customDesignImageBack,
+          `orders/${user.uid}/${Date.now()}_design_back`
+        );
+      }
+
       if (logoPreview) {
         logoStorageUrl = await uploadFileToStorage(
           logoPreview,
@@ -204,6 +227,8 @@ export default function Store() {
         price: selectedProduct.price,
         designMode: selectedProduct.isCard ? designMode : null,
         design: selectedProduct.isCard ? (designMode === 'template' ? selectedDesign.id : 'custom') : null,
+        customDesignSides: designMode === 'custom' ? customDesignSides : null,
+        customDesignBackUrl: customDesignBackStorageUrl,
         corporateColor: selectedProduct.isCard ? corporateColor : null,
         logoUrl: logoStorageUrl, 
         qrLogoUrl: selectedProduct.isCard ? (qrLogoPreview || '') : '',
@@ -438,19 +463,40 @@ export default function Store() {
 
                     {selectedProduct.isCard && (
                       <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-2">¿Cómo quieres diseñar el anverso?</label>
-                        <div className="flex gap-4">
-                          <button 
-                            onClick={() => setDesignMode('template')} 
-                            className={`flex-1 py-3 rounded-xl font-medium border-2 transition-colors ${designMode === 'template' ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'}`}
+                        <label className="block text-sm font-medium text-zinc-700 mb-3">¿Cómo quieres diseñar tu tarjeta?</label>
+                        <div className="flex flex-col gap-3">
+                          <button
+                            onClick={() => setDesignMode('template')}
+                            className={`w-full p-4 rounded-xl border-2 text-left transition-all ${designMode === 'template' ? 'border-brand-600 bg-brand-50' : 'border-zinc-200 hover:border-zinc-300'}`}
                           >
-                            Usar Plantillas
+                            <div className="font-semibold text-zinc-900 text-sm">Usar plantilla</div>
+                            <div className="text-xs text-zinc-500 mt-0.5">Elige un diseño base con tus datos. El reverso con QR se genera automáticamente.</div>
+                            <div className="flex items-center gap-1 mt-2">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                              <span className="text-[11px] text-emerald-600 font-medium">QR incluido automáticamente</span>
+                            </div>
                           </button>
-                          <button 
-                            onClick={() => setDesignMode('custom')} 
-                            className={`flex-1 py-3 rounded-xl font-medium border-2 transition-colors ${designMode === 'custom' ? 'border-brand-600 bg-brand-50 text-brand-700' : 'border-zinc-200 text-zinc-600 hover:border-zinc-300'}`}
+                          <button
+                            onClick={() => { setDesignMode('custom'); setCustomDesignSides('1'); }}
+                            className={`w-full p-4 rounded-xl border-2 text-left transition-all ${designMode === 'custom' && customDesignSides === '1' ? 'border-brand-600 bg-brand-50' : 'border-zinc-200 hover:border-zinc-300'}`}
                           >
-                            Subir mi diseño
+                            <div className="font-semibold text-zinc-900 text-sm">Mi diseño — 1 cara</div>
+                            <div className="text-xs text-zinc-500 mt-0.5">Sube tu diseño para el anverso. El reverso con QR se genera automáticamente.</div>
+                            <div className="flex items-center gap-1 mt-2">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                              <span className="text-[11px] text-emerald-600 font-medium">QR incluido automáticamente</span>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => { setDesignMode('custom'); setCustomDesignSides('2'); }}
+                            className={`w-full p-4 rounded-xl border-2 text-left transition-all ${designMode === 'custom' && customDesignSides === '2' ? 'border-brand-600 bg-brand-50' : 'border-zinc-200 hover:border-zinc-300'}`}
+                          >
+                            <div className="font-semibold text-zinc-900 text-sm">Mi diseño — 2 caras</div>
+                            <div className="text-xs text-zinc-500 mt-0.5">Sube el anverso y el reverso. El QR debe incluirse en tu diseño o lo añadimos nosotros.</div>
+                            <div className="flex items-center gap-1 mt-2">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              <span className="text-[11px] text-amber-600 font-medium">QR bajo petición — contáctanos</span>
+                            </div>
                           </button>
                         </div>
                       </div>
@@ -604,7 +650,7 @@ export default function Store() {
                     ) : selectedProduct.isCard && designMode === 'custom' ? (
                       <div className="space-y-6">
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-2">Sube el diseño de tu tarjeta (Anverso)</label>
+                          <label className="block text-sm font-medium text-zinc-700 mb-2">Sube el diseño de tu tarjeta {customDesignSides === '2' ? '(Anverso)' : '(Anverso)'}</label>
                           <div className="border-2 border-dashed border-zinc-300 rounded-xl p-8 text-center hover:bg-zinc-50 transition-colors relative">
                             <input 
                               type="file" 
@@ -617,6 +663,33 @@ export default function Store() {
                             <p className="text-xs text-zinc-500">Formatos recomendados: JPG, PNG. Tamaño máximo: 5MB.<br/>Para diseños completos, usar proporciones 85x54mm.</p>
                           </div>
                         </div>
+
+                        {customDesignSides === '2' && (
+                          <div>
+                            <label className="block text-sm font-medium text-zinc-700 mb-2">Sube el diseño del reverso</label>
+                            <div className="border-2 border-dashed border-zinc-300 rounded-xl p-8 text-center hover:bg-zinc-50 transition-colors relative">
+                              <input
+                                type="file"
+                                accept="image/jpeg, image/png, image/svg+xml, application/pdf"
+                                onChange={handleCustomDesignBackUpload}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              />
+                              <Upload className="w-10 h-10 text-zinc-400 mx-auto mb-3" />
+                              <p className="text-sm font-medium text-zinc-900 mb-1">Reverso de la tarjeta</p>
+                              <p className="text-xs text-zinc-500">Mismas proporciones que el anverso: 85x54mm</p>
+                            </div>
+                            {customDesignImageBack && (
+                              <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                Reverso cargado correctamente
+                              </p>
+                            )}
+                            <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
+                              <p className="text-xs text-amber-700">Si quieres incluir el QR en tu diseño, contáctanos antes de enviar el pedido para facilitarte el código.</p>
+                            </div>
+                          </div>
+                        )}
+
                         <div>
                           <label className="block text-sm font-medium text-zinc-700 mb-2">Color Corporativo (Fondo del reverso)</label>
                           <div className="flex items-center gap-4">

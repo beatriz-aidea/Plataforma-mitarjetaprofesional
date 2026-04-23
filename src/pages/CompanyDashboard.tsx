@@ -12,6 +12,7 @@ interface Company {
   name: string;
   logo: string;
   customFields: any[];
+  visibleFields?: string[];
 }
 
 interface Member {
@@ -36,6 +37,8 @@ export default function CompanyDashboard() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
+  const [savingFields, setSavingFields] = useState(false);
+  const [visibleFields, setVisibleFields] = useState<string[]>([]);
   
   const [activeTab, setActiveTab] = useState<'members' | 'settings' | 'design'>('members');
   const [viewMode, setViewMode] = useState<'list' | 'gallery' | 'edit'>('list');
@@ -58,7 +61,15 @@ export default function CompanyDashboard() {
         // Fetch company details
         const companyDoc = await getDoc(doc(db, 'companies', companyId));
         if (companyDoc.exists()) {
-          setCompany({ id: companyDoc.id, ...companyDoc.data() } as Company);
+          const data = companyDoc.data() as any;
+          setCompany({ id: companyDoc.id, ...data } as Company);
+          if (data.visibleFields) {
+            setVisibleFields(data.visibleFields);
+          } else {
+            const defaultStandards = ['name', 'email', 'phone', 'company', 'role', 'website', 'address', 'color', 'social', 'photo', 'logo', 'description', 'notes'];
+            const customIds = (data.customFields || []).map((f: any) => f.id);
+            setVisibleFields([...defaultStandards, ...customIds]);
+          }
         }
 
         // Fetch members (users)
@@ -209,6 +220,48 @@ export default function CompanyDashboard() {
     link.click();
   };
 
+  const STANDARD_FIELDS = [
+    { id: 'name', label: 'Nombre' },
+    { id: 'email', label: 'Email' },
+    { id: 'phone', label: 'Teléfono' },
+    { id: 'company', label: 'Empresa' },
+    { id: 'role', label: 'Cargo' },
+    { id: 'website', label: 'Web' },
+    { id: 'address', label: 'Dirección' },
+    { id: 'color', label: 'Color de tarjeta' },
+    { id: 'social', label: 'Redes Sociales' },
+    { id: 'photo', label: 'Foto' },
+    { id: 'logo', label: 'Logo' },
+    { id: 'description', label: 'Descripción' },
+    { id: 'notes', label: 'Contexto de red' }
+  ];
+
+  const handleToggleField = (id: string) => {
+    if (id === 'name' || id === 'email') return; // Cannot toggle mandatory fields
+    setVisibleFields(prev => 
+      prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
+    );
+  };
+
+  const saveVisibleFields = async () => {
+    if (!companyId) return;
+    setSavingFields(true);
+    try {
+      await updateDoc(doc(db, 'companies', companyId), {
+        visibleFields
+      });
+      if (company) {
+        setCompany({ ...company, visibleFields });
+      }
+      alert('Configuración guardada correctamente.');
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar la configuración.');
+    } finally {
+      setSavingFields(false);
+    }
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center">Cargando...</div>;
 
   if (!company) {
@@ -316,7 +369,7 @@ export default function CompanyDashboard() {
           </button>
         </div>
 
-        {activeTab === 'design' && (
+        {activeTab === 'design' ? (
           <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-8 text-center">
             <div className="w-16 h-16 bg-brand-50 rounded-full flex items-center justify-center mx-auto mb-4">
               <Palette className="w-8 h-8 text-brand-600" />
@@ -329,35 +382,78 @@ export default function CompanyDashboard() {
               Configurar Diseño
             </button>
           </div>
-        )}
+        ) : activeTab === 'settings' ? (
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-zinc-900">Configuración de Campos</h2>
+                <p className="text-zinc-600 text-sm mt-1">
+                  Selecciona qué campos quieres que sean visibles para los empleados de tu empresa en su formulario.
+                </p>
+              </div>
+              <button
+                onClick={saveVisibleFields}
+                disabled={savingFields}
+                className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-medium px-6 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {savingFields ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+            
+            <div className="space-y-8">
+              {/* Campos estándar */}
+              <div>
+                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4 border-b border-zinc-100 pb-2">Campos Estándar</h3>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {STANDARD_FIELDS.map(field => {
+                    const isMandatory = field.id === 'name' || field.id === 'email';
+                    const isVisible = isMandatory || visibleFields.includes(field.id);
+                    return (
+                      <div key={field.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                        <span className="font-medium text-zinc-900">{field.label}</span>
+                        <button
+                          onClick={() => handleToggleField(field.id)}
+                          disabled={isMandatory}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isMandatory ? 'opacity-50 cursor-not-allowed' : ''} ${isVisible ? 'bg-brand-600' : 'bg-zinc-200'}`}
+                        >
+                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
-        {activeTab === 'settings' ? (
-          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm p-6">
-            <h2 className="text-lg font-bold text-zinc-900 mb-4">Campos Personalizados de la Empresa</h2>
-            <p className="text-zinc-600 mb-6 text-sm">
-              Estos son los campos personalizados que se han configurado para tu empresa. Puedes rellenar sus valores para cada empleado desde la pestaña de Tarjetas de Empleados.
-            </p>
-            {company.customFields && company.customFields.length > 0 ? (
-              <div className="space-y-4">
-                {company.customFields.map((field: any) => (
-                  <div key={field.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
-                    <div>
-                      <span className="font-medium text-zinc-900">{field.label}</span>
-                      <span className="ml-3 text-xs px-2 py-1 bg-zinc-200 text-zinc-700 rounded-md uppercase">
-                        {field.type}
-                      </span>
-                      {field.required && (
-                        <span className="ml-2 text-xs text-red-600 font-medium">Requerido</span>
-                      )}
-                    </div>
+              {/* Campos personalizados */}
+              <div>
+                <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4 border-b border-zinc-100 pb-2">Campos Personalizados</h3>
+                {company?.customFields && company.customFields.length > 0 ? (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {company.customFields.map((field: any) => {
+                      const isVisible = visibleFields.includes(field.id);
+                      return (
+                        <div key={field.id} className="flex items-center justify-between p-4 bg-zinc-50 rounded-xl border border-zinc-100">
+                          <div>
+                            <span className="font-medium text-zinc-900 block leading-tight">{field.label}</span>
+                            <span className="text-xs text-zinc-500">{field.type}</span>
+                          </div>
+                          <button
+                            onClick={() => handleToggleField(field.id)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isVisible ? 'bg-brand-600' : 'bg-zinc-200'}`}
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isVisible ? 'translate-x-6' : 'translate-x-1'}`} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : (
+                  <p className="text-sm text-zinc-500 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+                    No has definido ningún campo personalizado.
+                  </p>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-12 bg-zinc-50 rounded-xl border border-zinc-100">
-                <p className="text-zinc-500">No hay campos personalizados configurados para esta empresa.</p>
-              </div>
-            )}
+            </div>
           </div>
         ) : (
           <>

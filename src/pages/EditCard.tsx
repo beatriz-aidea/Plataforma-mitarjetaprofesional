@@ -20,6 +20,7 @@ export default function EditCard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [cardType, setCardType] = useState<'estatica' | 'dinamica'>('dinamica');
   const [availableCustomFields, setAvailableCustomFields] = useState<any[]>([]);
+  const [visibleFields, setVisibleFields] = useState<string[] | null>(null);
   const [showPlans, setShowPlans] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -58,29 +59,36 @@ export default function EditCard() {
         const fieldsData = fieldsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setAvailableCustomFields(fieldsData);
 
-        if (!cardId) {
-          if (companyId) {
-            try {
-              const companyDoc = await getDoc(doc(db, 'companies', companyId));
-              if (companyDoc.exists()) {
-                const companyData = companyDoc.data();
-                setFormData(prev => ({
-                  ...prev,
-                  identity: {
-                    ...prev.identity,
-                    company: companyData.name || '',
-                    companyLogoUrl: companyData.logoUrl || companyData.logo || '',
-                  },
-                  settings: {
-                    ...prev.settings,
-                    primaryColor: companyData.primaryColor || prev.settings.primaryColor,
-                  },
-                  customFields: companyData.customFields || [],
-                }));
+        let companyDataFromDb = null;
+        if (companyId) {
+          try {
+            const companyDoc = await getDoc(doc(db, 'companies', companyId));
+            if (companyDoc.exists()) {
+              companyDataFromDb = companyDoc.data();
+              if (companyDataFromDb.visibleFields) {
+                setVisibleFields(companyDataFromDb.visibleFields);
               }
-            } catch (error) {
-              console.error('Error cargando datos de empresa:', error);
             }
+          } catch (error) {
+            console.error('Error cargando datos de empresa:', error);
+          }
+        }
+
+        if (!cardId) {
+          if (companyDataFromDb) {
+            setFormData(prev => ({
+              ...prev,
+              identity: {
+                ...prev.identity,
+                company: companyDataFromDb.name || '',
+                companyLogoUrl: companyDataFromDb.logoUrl || companyDataFromDb.logo || '',
+              },
+              settings: {
+                ...prev.settings,
+                primaryColor: companyDataFromDb.primaryColor || prev.settings.primaryColor,
+              },
+              customFields: companyDataFromDb.customFields || [],
+            }));
           }
           setInitialLoading(false);
           return;
@@ -264,6 +272,11 @@ export default function EditCard() {
     setFormData({ ...formData, customFields: newCustomFields });
   };
 
+  const isFieldVisible = (fieldId: string) => {
+    if (visibleFields === null) return true;
+    return visibleFields.includes(fieldId) || fieldId === 'name' || fieldId === 'email';
+  };
+
   const handleSubmit = async (e: React.FormEvent, targetPath?: string) => {
     e.preventDefault();
     if (!user) return;
@@ -394,20 +407,26 @@ export default function EditCard() {
                 </label>
                 <input required type="text" value={formData.identity.lastName} onChange={e => handleChange('identity', 'lastName', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="Ej. García" />
               </div>
-              <div>
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Briefcase className="w-4 h-4 text-brand-600" /> EMPRESA
-                </label>
-                <input type="text" value={formData.identity.company} onChange={e => handleChange('identity', 'company', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="Ej. AIDEA Creative" />
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Briefcase className="w-4 h-4 text-brand-600" /> CARGO
-                </label>
-                <input type="text" value={formData.identity.role} onChange={e => handleChange('identity', 'role', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="Ej. Director Creativo" />
-              </div>
               
-              {cardType === 'dinamica' && (
+              {isFieldVisible('company') && (
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Briefcase className="w-4 h-4 text-brand-600" /> EMPRESA
+                  </label>
+                  <input type="text" value={formData.identity.company} onChange={e => handleChange('identity', 'company', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="Ej. AIDEA Creative" />
+                </div>
+              )}
+              
+              {isFieldVisible('role') && (
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Briefcase className="w-4 h-4 text-brand-600" /> CARGO
+                  </label>
+                  <input type="text" value={formData.identity.role} onChange={e => handleChange('identity', 'role', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="Ej. Director Creativo" />
+                </div>
+              )}
+              
+              {cardType === 'dinamica' && isFieldVisible('photo') && (
                 <div className="sm:col-span-2">
                   <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                     <User className="w-4 h-4 text-brand-600" /> Foto de Perfil / Logo
@@ -435,51 +454,53 @@ export default function EditCard() {
                 </div>
               )}
 
-              <div className="sm:col-span-2">
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Building2 className="w-4 h-4 text-brand-600" /> Logotipo de Empresa
-                  </label>
-                  <p className="text-xs text-zinc-400 mb-2">Imagen horizontal de tu empresa (distinta de la foto de perfil)</p>
-                  <div className="flex items-center gap-4">
-                    {formData.identity.companyLogoUrl && (
-                      <img src={formData.identity.companyLogoUrl} alt="Logo empresa" className="h-12 w-auto max-w-[120px] object-contain border border-zinc-200 rounded-lg p-1" />
-                    )}
-                    <div className="flex-1">
-                      <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-2xl hover:border-brand-600 hover:bg-red-50 transition-colors cursor-pointer">
-                        <Upload className="w-5 h-5 text-zinc-500" />
-                        <span className="text-sm font-medium text-zinc-700">
-                          {uploadingImage ? 'Subiendo...' : 'Subir logotipo (JPG, PNG)'}
-                        </span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleImageUpload('identity', 'companyLogoUrl')}
-                          disabled={uploadingImage}
-                        />
-                      </label>
+              {isFieldVisible('logo') && (
+                <div className="sm:col-span-2">
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Building2 className="w-4 h-4 text-brand-600" /> Logotipo de Empresa
+                    </label>
+                    <p className="text-xs text-zinc-400 mb-2">Imagen horizontal de tu empresa (distinta de la foto de perfil)</p>
+                    <div className="flex items-center gap-4">
+                      {formData.identity.companyLogoUrl && (
+                        <img src={formData.identity.companyLogoUrl} alt="Logo empresa" className="h-12 w-auto max-w-[120px] object-contain border border-zinc-200 rounded-lg p-1" />
+                      )}
+                      <div className="flex-1">
+                        <label className="flex items-center justify-center gap-2 w-full px-4 py-3 border-2 border-dashed border-zinc-300 rounded-2xl hover:border-brand-600 hover:bg-red-50 transition-colors cursor-pointer">
+                          <Upload className="w-5 h-5 text-zinc-500" />
+                          <span className="text-sm font-medium text-zinc-700">
+                            {uploadingImage ? 'Subiendo...' : 'Subir logotipo (JPG, PNG)'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleImageUpload('identity', 'companyLogoUrl')}
+                            disabled={uploadingImage}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Tamaño del logotipo</label>
+                      <div className="flex gap-2">
+                        {(['S', 'M', 'L'] as const).map(size => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => handleChange('settings', 'companyLogoSize', size)}
+                            className={`flex-1 py-2 rounded-xl border-2 font-bold text-sm transition-colors ${
+                              formData.settings.companyLogoSize === size
+                                ? 'border-brand-600 bg-brand-50 text-brand-700'
+                                : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3">
-                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Tamaño del logotipo</label>
-                    <div className="flex gap-2">
-                      {(['S', 'M', 'L'] as const).map(size => (
-                        <button
-                          key={size}
-                          type="button"
-                          onClick={() => handleChange('settings', 'companyLogoSize', size)}
-                          className={`flex-1 py-2 rounded-xl border-2 font-bold text-sm transition-colors ${
-                            formData.settings.companyLogoSize === size
-                              ? 'border-brand-600 bg-brand-50 text-brand-700'
-                              : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'
-                          }`}
-                        >
-                          {size}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+              )}
             </div>
           </section>
 
@@ -490,18 +511,20 @@ export default function EditCard() {
               <h2 className="text-2xl font-bold text-zinc-900">Contacto Digital</h2>
             </div>
             <div className="grid sm:grid-cols-2 gap-6">
-              <div>
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Smartphone className="w-4 h-4 text-brand-600" /> MÓVIL/WHATSAPP
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex items-center justify-between px-4 py-3 border border-zinc-200 rounded-2xl bg-white w-32 shrink-0">
-                    <span className="font-bold text-zinc-900">ES (+34)</span>
-                    <span className="text-zinc-400 text-xs">▼</span>
+              {isFieldVisible('phone') && (
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Smartphone className="w-4 h-4 text-brand-600" /> MÓVIL/WHATSAPP
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="flex items-center justify-between px-4 py-3 border border-zinc-200 rounded-2xl bg-white w-32 shrink-0">
+                      <span className="font-bold text-zinc-900">ES (+34)</span>
+                      <span className="text-zinc-400 text-xs">▼</span>
+                    </div>
+                    <input type="tel" value={formData.contact.mobile} onChange={e => handleChange('contact', 'mobile', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="600 000 000" />
                   </div>
-                  <input type="tel" value={formData.contact.mobile} onChange={e => handleChange('contact', 'mobile', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="600 000 000" />
                 </div>
-              </div>
+              )}
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
                   <Mail className="w-4 h-4 text-brand-600" /> EMAIL CORPORATIVO
@@ -511,47 +534,53 @@ export default function EditCard() {
                   <Lock className="w-5 h-5 text-zinc-400 absolute right-4 top-1/2 -translate-y-1/2" />
                 </div>
               </div>
-              <div>
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Phone className="w-4 h-4 text-brand-600" /> TELÉFONO FIJO
-                </label>
-                <div className="flex gap-2">
-                  <div className="flex items-center justify-between px-4 py-3 border border-zinc-200 rounded-2xl bg-white w-32 shrink-0">
-                    <span className="font-bold text-zinc-900">ES (+34)</span>
-                    <span className="text-zinc-400 text-xs">▼</span>
+              {isFieldVisible('phone') && (
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Phone className="w-4 h-4 text-brand-600" /> TELÉFONO FIJO
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="flex items-center justify-between px-4 py-3 border border-zinc-200 rounded-2xl bg-white w-32 shrink-0">
+                      <span className="font-bold text-zinc-900">ES (+34)</span>
+                      <span className="text-zinc-400 text-xs">▼</span>
+                    </div>
+                    <input type="tel" value={formData.contact.landline} onChange={e => handleChange('contact', 'landline', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="912 000 000" />
                   </div>
-                  <input type="tel" value={formData.contact.landline} onChange={e => handleChange('contact', 'landline', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="912 000 000" />
                 </div>
-              </div>
-              <div>
-                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                  <Globe className="w-4 h-4 text-brand-600" /> WEB / PORTFOLIO
-                </label>
-                <input type="text" value={formData.contact.website} onChange={e => handleChange('contact', 'website', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="www.aidea.com" />
-              </div>
+              )}
+              {isFieldVisible('website') && (
+                <div>
+                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                    <Globe className="w-4 h-4 text-brand-600" /> WEB / PORTFOLIO
+                  </label>
+                  <input type="text" value={formData.contact.website} onChange={e => handleChange('contact', 'website', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" placeholder="www.aidea.com" />
+                </div>
+              )}
             </div>
           </section>
 
           {/* Context */}
-          <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
-            <div className="flex items-center gap-3 mb-8">
-              <Users className="w-6 h-6 text-brand-600" />
-              <h2 className="text-2xl font-bold text-zinc-900">Contexto de Red</h2>
-            </div>
-            <div>
-              <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
-                <span className="text-brand-600 font-bold">≡</span> POR QUÉ TE PUEDEN RECORDAR
-              </label>
-              <textarea rows={3} value={formData.context.notes} onChange={e => handleChange('context', 'notes', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none resize-none text-zinc-700 placeholder:text-zinc-300" placeholder="(Tus productos, servicios, proyectos, networking...)" />
-              <div className="flex justify-between mt-2">
-                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">SÉ BREVE, TE LEERÁN MEJOR</span>
-                <span className="text-xs font-bold text-zinc-400">{(formData.context?.notes?.length || 0)}/100</span>
+          {isFieldVisible('notes') && (
+            <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Users className="w-6 h-6 text-brand-600" />
+                <h2 className="text-2xl font-bold text-zinc-900">Contexto de Red</h2>
               </div>
-            </div>
-          </section>
+              <div>
+                <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                  <span className="text-brand-600 font-bold">≡</span> POR QUÉ TE PUEDEN RECORDAR
+                </label>
+                <textarea rows={3} value={formData.context.notes} onChange={e => handleChange('context', 'notes', e.target.value)} className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none resize-none text-zinc-700 placeholder:text-zinc-300" placeholder="(Tus productos, servicios, proyectos, networking...)" />
+                <div className="flex justify-between mt-2">
+                  <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">SÉ BREVE, TE LEERÁN MEJOR</span>
+                  <span className="text-xs font-bold text-zinc-400">{(formData.context?.notes?.length || 0)}/100</span>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* Address */}
-          {cardType === 'dinamica' && (
+          {cardType === 'dinamica' && isFieldVisible('address') && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
               <div className="flex items-center gap-3 mb-8">
                 <MapPin className="w-6 h-6 text-brand-600" />
@@ -593,7 +622,7 @@ export default function EditCard() {
           )}
 
           {/* Social */}
-          {cardType === 'dinamica' && (
+          {cardType === 'dinamica' && isFieldVisible('social') && (
             <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
               <div className="flex items-center gap-3 mb-8">
                 <Share2 className="w-6 h-6 text-brand-600" />
@@ -629,80 +658,82 @@ export default function EditCard() {
           )}
 
           {/* Design and Colors */}
-          <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
-            <div className="flex items-center gap-3 mb-8">
-              <Palette className="w-6 h-6 text-brand-600" />
-              <h2 className="text-2xl font-bold text-zinc-900">Diseño y Colores</h2>
-            </div>
-            <div className="space-y-8">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="showPhoto" className="text-sm font-medium text-zinc-700 cursor-pointer">
-                    Mostrar foto de perfil en la tarjeta pública
-                  </label>
-                  <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
-                    <input 
-                      type="checkbox" 
-                      id="showPhoto" 
-                      checked={formData.settings.showPhoto}
-                      onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, showPhoto: e.target.checked } }))}
-                      className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out"
-                      style={{ transform: formData.settings.showPhoto ? 'translateX(100%)' : 'translateX(0)', borderColor: formData.settings.showPhoto ? '#059669' : '#d4d4d8' }}
-                    />
-                    <label 
-                      htmlFor="showPhoto" 
-                      className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${formData.settings.showPhoto ? 'bg-emerald-500' : 'bg-zinc-300'}`}
-                    ></label>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <label htmlFor="showLogo" className="text-sm font-medium text-zinc-700 cursor-pointer">
-                    Mostrar logotipo en la tarjeta pública
-                  </label>
-                  <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
-                    <input 
-                      type="checkbox" 
-                      id="showLogo" 
-                      checked={formData.settings.showLogo}
-                      onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, showLogo: e.target.checked } }))}
-                      className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out"
-                      style={{ transform: formData.settings.showLogo ? 'translateX(100%)' : 'translateX(0)', borderColor: formData.settings.showLogo ? '#059669' : '#d4d4d8' }}
-                    />
-                    <label 
-                      htmlFor="showLogo" 
-                      className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${formData.settings.showLogo ? 'bg-emerald-500' : 'bg-zinc-300'}`}
-                    ></label>
-                  </div>
-                </div>
+          {isFieldVisible('color') && (
+            <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Palette className="w-6 h-6 text-brand-600" />
+                <h2 className="text-2xl font-bold text-zinc-900">Diseño y Colores</h2>
               </div>
+              <div className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="showPhoto" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                      Mostrar foto de perfil en la tarjeta pública
+                    </label>
+                    <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
+                      <input 
+                        type="checkbox" 
+                        id="showPhoto" 
+                        checked={formData.settings.showPhoto}
+                        onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, showPhoto: e.target.checked } }))}
+                        className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out"
+                        style={{ transform: formData.settings.showPhoto ? 'translateX(100%)' : 'translateX(0)', borderColor: formData.settings.showPhoto ? '#059669' : '#d4d4d8' }}
+                      />
+                      <label 
+                        htmlFor="showPhoto" 
+                        className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${formData.settings.showPhoto ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                      ></label>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="showLogo" className="text-sm font-medium text-zinc-700 cursor-pointer">
+                      Mostrar logotipo en la tarjeta pública
+                    </label>
+                    <div className="relative inline-block w-12 h-6 align-middle select-none transition duration-200 ease-in">
+                      <input 
+                        type="checkbox" 
+                        id="showLogo" 
+                        checked={formData.settings.showLogo}
+                        onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, showLogo: e.target.checked } }))}
+                        className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out"
+                        style={{ transform: formData.settings.showLogo ? 'translateX(100%)' : 'translateX(0)', borderColor: formData.settings.showLogo ? '#059669' : '#d4d4d8' }}
+                      />
+                      <label 
+                        htmlFor="showLogo" 
+                        className={`toggle-label block overflow-hidden h-6 rounded-full cursor-pointer transition-colors duration-200 ease-in-out ${formData.settings.showLogo ? 'bg-emerald-500' : 'bg-zinc-300'}`}
+                      ></label>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="pt-8 border-t border-zinc-100">
-                <div>
-                  <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Color Principal de la Tarjeta</label>
-                  <div className="flex items-center gap-4">
-                    <div className="relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 border-zinc-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
-                      <input 
-                        type="color" 
-                        value={formData.settings.primaryColor} 
-                        onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, primaryColor: e.target.value } }))}
-                        className="absolute -top-2 -left-2 w-20 h-20 cursor-pointer border-0 p-0"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <input 
-                        type="text" 
-                        value={formData.settings.primaryColor} 
-                        onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, primaryColor: e.target.value } }))}
-                        className="text-sm font-bold text-zinc-900 uppercase bg-transparent border-b border-zinc-200 outline-none focus:border-brand-600"
-                      />
-                      <span className="text-xs text-zinc-500">Haz clic en el cuadro o escribe el código</span>
+                <div className="pt-8 border-t border-zinc-100">
+                  <div>
+                    <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-3">Color Principal de la Tarjeta</label>
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-14 h-14 rounded-2xl overflow-hidden shadow-sm border-2 border-zinc-200 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 transition-all">
+                        <input 
+                          type="color" 
+                          value={formData.settings.primaryColor} 
+                          onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, primaryColor: e.target.value } }))}
+                          className="absolute -top-2 -left-2 w-20 h-20 cursor-pointer border-0 p-0"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <input 
+                          type="text" 
+                          value={formData.settings.primaryColor} 
+                          onChange={e => setFormData(prev => ({ ...prev, settings: { ...prev.settings, primaryColor: e.target.value } }))}
+                          className="text-sm font-bold text-zinc-900 uppercase bg-transparent border-b border-zinc-200 outline-none focus:border-brand-600"
+                        />
+                        <span className="text-xs text-zinc-500">Haz clic en el cuadro o escribe el código</span>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Settings */}
           <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
@@ -771,11 +802,11 @@ export default function EditCard() {
               </div>
               
               <div className="space-y-6">
-                {(!formData.customFields || formData.customFields.length === 0) ? (
+                {(!formData.customFields || formData.customFields.filter(f => isFieldVisible(f.id)).length === 0) ? (
                   <p className="text-zinc-500 text-center italic py-4">Añade campos personalizados a tu tarjeta.</p>
                 ) : (
                   <div className="space-y-4">
-                    {formData.customFields.map((field) => (
+                    {formData.customFields.filter(field => isFieldVisible(field.id)).map((field) => (
                       <div key={field.id} className="flex gap-3 items-end">
                         <div className="flex-1">
                           <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
@@ -816,6 +847,7 @@ export default function EditCard() {
                       >
                         <option value="" disabled>Selecciona un campo para añadir...</option>
                         {availableCustomFields
+                          .filter(f => isFieldVisible(f.id))
                           .filter(f => !formData.customFields?.find(cf => cf.id === f.id))
                           .map(field => (
                             <option key={field.id} value={field.id}>
