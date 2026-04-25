@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { db, storage } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
+import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText, Info } from 'lucide-react';
 import CardTemplate from '../components/CardTemplate';
 import Logo from '../components/Logo';
 import { QRCodeSVG } from 'qrcode.react';
@@ -67,7 +67,7 @@ export default function Store() {
     isCard: true
   });
 
-  const [designMode, setDesignMode] = useState<'template' | 'custom'>('template');
+  const [designMode, setDesignMode] = useState<'template' | 'custom' | null>(null);
   const [customDesignSides, setCustomDesignSides] = useState<'1' | '2'>('1');
   const [customDesignImageBack, setCustomDesignImageBack] = useState<string | null>(null);
   const [customDesignImage, setCustomDesignImage] = useState<string | null>(null);
@@ -83,7 +83,7 @@ export default function Store() {
   });
   const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true);
   const [shipping, setShipping] = useState({
-    fullName: '', company: '', street: '', city: '', province: '', zip: '', phone: ''
+    fullName: '', company: '', street: '', city: '', province: '', zip: '', country: '', phone: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -93,7 +93,29 @@ export default function Store() {
         ...prev,
         firstName: activeCardData.identity?.firstName || '',
         lastName: activeCardData.identity?.lastName || '',
-        company: activeCardData.identity?.company || ''
+        company: activeCardData.identity?.company || '',
+        street: activeCardData.address?.street || activeCardData.street || '',
+        city: activeCardData.address?.city || activeCardData.address?.poblacion || activeCardData.city || activeCardData.poblacion || '',
+        province: activeCardData.address?.province || activeCardData.province || '',
+        zip: activeCardData.address?.zip || activeCardData.zip || '',
+        country: activeCardData.address?.country || activeCardData.country || '',
+        phone: activeCardData.contact?.mobile || activeCardData.contact?.landline || activeCardData.phone || ''
+      }));
+    }
+  };
+
+  const handleCopyShippingFromCard = () => {
+    if (activeCardData) {
+      setShipping(prev => ({
+        ...prev,
+        fullName: `${activeCardData.identity?.firstName || ''} ${activeCardData.identity?.lastName || ''}`.trim(),
+        company: activeCardData.identity?.company || '',
+        street: activeCardData.address?.street || activeCardData.street || '',
+        city: activeCardData.address?.city || activeCardData.address?.poblacion || activeCardData.city || activeCardData.poblacion || '',
+        province: activeCardData.address?.province || activeCardData.province || '',
+        zip: activeCardData.address?.zip || activeCardData.zip || '',
+        country: activeCardData.address?.country || activeCardData.country || '',
+        phone: activeCardData.contact?.mobile || activeCardData.contact?.landline || activeCardData.phone || ''
       }));
     }
   };
@@ -649,6 +671,30 @@ export default function Store() {
                       </>
                     ) : selectedProduct.isCard && designMode === 'custom' ? (
                       <div className="space-y-6">
+                        <div className="bg-brand-50 border border-brand-100 rounded-xl p-4">
+                          <div className="flex gap-3">
+                            <Info className="w-5 h-5 text-brand-600 shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="text-sm font-semibold text-brand-900 mb-1">Especificaciones de diseño</h4>
+                              <p className="text-sm text-brand-800 mb-2">Para garantizar la mejor calidad de impresión, tu archivo debe cumplir los siguientes requisitos:</p>
+                              <ul className="text-sm text-brand-800 list-disc pl-4 space-y-1 mb-3">
+                                <li><strong>Sangrado:</strong> 2 mm por cada lado.</li>
+                                <li><strong>Formato recomendado:</strong> PDF con fuentes contorneadas.</li>
+                                <li><strong>Otros formatos:</strong> JPG y PNG con resolución de 300 ppp.</li>
+                              </ul>
+                              <a 
+                                href="/guia-impresion.pdf"
+                                target="_blank"
+                                rel="noopener noreferrer" 
+                                className="inline-flex text-sm font-medium text-brand-700 bg-brand-100/50 hover:bg-brand-200 px-3 py-1.5 rounded-lg transition-colors items-center gap-1.5"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                Ver guía de impresión
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+
                         <div>
                           <label className="block text-sm font-medium text-zinc-700 mb-2">Sube el diseño de tu tarjeta {customDesignSides === '2' ? '(Anverso)' : '(Anverso)'}</label>
                           <div className="border-2 border-dashed border-zinc-300 rounded-xl p-8 text-center hover:bg-zinc-50 transition-colors relative">
@@ -660,7 +706,7 @@ export default function Store() {
                             />
                             <Upload className="w-10 h-10 text-zinc-400 mx-auto mb-3" />
                             <p className="text-sm font-medium text-zinc-900 mb-1">Haz clic para subir o tomar una foto</p>
-                            <p className="text-xs text-zinc-500">Formatos recomendados: JPG, PNG. Tamaño máximo: 5MB.<br/>Para diseños completos, usar proporciones 85x54mm.</p>
+                            <p className="text-xs text-zinc-500">Formatos recomendados: PDF, JPG, PNG. Calidad mínima: 300 ppp.<br/>Para diseños completos, usar proporciones 85x54mm más 2mm de sangrado.</p>
                           </div>
                         </div>
 
@@ -676,7 +722,7 @@ export default function Store() {
                               />
                               <Upload className="w-10 h-10 text-zinc-400 mx-auto mb-3" />
                               <p className="text-sm font-medium text-zinc-900 mb-1">Reverso de la tarjeta</p>
-                              <p className="text-xs text-zinc-500">Mismas proporciones que el anverso: 85x54mm</p>
+                              <p className="text-xs text-zinc-500">Mismas proporciones que el anverso: 85x54mm más 2mm de sangrado.</p>
                             </div>
                             {customDesignImageBack && (
                               <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
@@ -714,7 +760,7 @@ export default function Store() {
                       </div>
                     ) : null}
 
-                    {selectedProduct.isCard && (
+                    {selectedProduct.isCard && designMode !== null && (
                       <div className="pt-6 border-t border-zinc-200 mt-6">
                         <label className="block text-sm font-medium text-zinc-700 mb-2">Logo para el QR / Isotipo (Opcional)</label>
                         <div className="border-2 border-dashed border-zinc-300 rounded-xl p-6 text-center hover:bg-zinc-50 transition-colors relative">
@@ -733,7 +779,7 @@ export default function Store() {
 
                     <button 
                       onClick={() => setStep(2)}
-                      disabled={selectedProduct.isCard && designMode === 'custom' && !customDesignImage}
+                      disabled={(selectedProduct.isCard && !designMode) || (selectedProduct.isCard && designMode === 'custom' && !customDesignImage)}
                       className="w-full py-3 bg-brand-600 text-white rounded-xl font-medium hover:bg-brand-700 transition-colors disabled:opacity-50"
                     >
                       Continuar al Envío
@@ -756,7 +802,7 @@ export default function Store() {
                         <h3 className="text-lg font-semibold text-zinc-900">Datos de Facturación</h3>
                         {activeCardData && (
                           <button type="button" onClick={handleCopyFromCard} className="text-sm text-brand-600 font-medium hover:text-brand-700">
-                            (Copiar datos de la tarjeta)
+                            (Copiar los datos del usuario)
                           </button>
                         )}
                       </div>
@@ -774,58 +820,65 @@ export default function Store() {
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre {billingType === 'empresa' && '(Opcional)'}</label>
-                          <input required={billingType === 'autonomo'} type="text" value={billing.firstName} onChange={e => setBilling({...billing, firstName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre {(!shippingSameAsBilling || billingType === 'empresa') && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling && billingType === 'autonomo'} type="text" value={billing.firstName} onChange={e => setBilling({...billing, firstName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Apellidos {billingType === 'empresa' && '(Opcional)'}</label>
-                          <input required={billingType === 'autonomo'} type="text" value={billing.lastName} onChange={e => setBilling({...billing, lastName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Apellidos {(!shippingSameAsBilling || billingType === 'empresa') && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling && billingType === 'autonomo'} type="text" value={billing.lastName} onChange={e => setBilling({...billing, lastName: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa {billingType === 'autonomo' && '(Opcional)'}</label>
-                          <input required={billingType === 'empresa'} type="text" value={billing.company} onChange={e => setBilling({...billing, company: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Empresa {(!shippingSameAsBilling || billingType === 'autonomo') && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling && billingType === 'empresa'} type="text" value={billing.company} onChange={e => setBilling({...billing, company: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">NIF/CIF</label>
-                          <input required type="text" value={billing.nif} onChange={e => setBilling({...billing, nif: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">NIF/CIF (Opcional)</label>
+                          <input type="text" value={billing.nif} onChange={e => setBilling({...billing, nif: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Dirección</label>
-                        <input required type="text" value={billing.street} onChange={e => setBilling({...billing, street: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        <label className="block text-sm font-medium text-zinc-700 mb-1">Dirección {!shippingSameAsBilling && '(Opcional)'}</label>
+                        <input required={shippingSameAsBilling} type="text" value={billing.street} onChange={e => setBilling({...billing, street: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Código Postal</label>
-                          <input required type="text" value={billing.zip} onChange={e => setBilling({...billing, zip: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Código Postal {!shippingSameAsBilling && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling} type="text" value={billing.zip} onChange={e => setBilling({...billing, zip: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Población</label>
-                          <input required type="text" value={billing.city} onChange={e => setBilling({...billing, city: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Población {!shippingSameAsBilling && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling} type="text" value={billing.city} onChange={e => setBilling({...billing, city: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Provincia</label>
-                          <input required type="text" value={billing.province} onChange={e => setBilling({...billing, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">Provincia {!shippingSameAsBilling && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling} type="text" value={billing.province} onChange={e => setBilling({...billing, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">País</label>
-                          <input required type="text" value={billing.country} onChange={e => setBilling({...billing, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <label className="block text-sm font-medium text-zinc-700 mb-1">País {!shippingSameAsBilling && '(Opcional)'}</label>
+                          <input required={shippingSameAsBilling} type="text" value={billing.country} onChange={e => setBilling({...billing, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
-                        <input required type="tel" value={billing.phone} onChange={e => setBilling({...billing, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                        <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto {!shippingSameAsBilling && '(Opcional)'}</label>
+                        <input required={shippingSameAsBilling} type="tel" value={billing.phone} onChange={e => setBilling({...billing, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                       </div>
                     </div>
 
                     <div className="pt-6 border-t border-zinc-200 space-y-4">
-                      <h3 className="text-lg font-semibold text-zinc-900">Datos de Envío</h3>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-semibold text-zinc-900">Datos de Envío</h3>
+                        {activeCardData && !shippingSameAsBilling && (
+                          <button type="button" onClick={handleCopyShippingFromCard} className="text-sm text-brand-600 font-medium hover:text-brand-700">
+                            (Copiar los datos del usuario)
+                          </button>
+                        )}
+                      </div>
                       <div className="flex gap-4 mb-4">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input type="radio" checked={shippingSameAsBilling} onChange={() => setShippingSameAsBilling(true)} className="text-brand-600 focus:ring-brand-500" />
@@ -869,9 +922,13 @@ export default function Store() {
                               <input required type="text" value={shipping.province} onChange={e => setShipping({...shipping, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
-                              <input required type="tel" value={shipping.phone} onChange={e => setShipping({...shipping, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">País</label>
+                              <input required type="text" value={shipping.country || ''} onChange={e => setShipping({...shipping, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                             </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
+                            <input required type="tel" value={shipping.phone} onChange={e => setShipping({...shipping, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                           </div>
                         </div>
                       )}
@@ -896,59 +953,159 @@ export default function Store() {
                   Pago Seguro
                 </h2>
                 
-                {step === 3 && (
-                  <form onSubmit={handleCheckout} className="space-y-6">
-                    <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 mb-6">
-                      <div className="flex justify-between mb-2">
-                        <span className="text-zinc-600">{selectedProduct.name}</span>
-                        <span className="font-medium">{Number(selectedProduct.price).toFixed(2)}€</span>
-                      </div>
-                      <div className="flex justify-between mb-4">
-                        <span className="text-zinc-600">Envío</span>
-                        <span className="font-medium">Gratis</span>
-                      </div>
-                      <div className="flex justify-between pt-4 border-t border-zinc-200 font-bold text-lg">
-                        <span>Total</span>
-                        <span>{Number(selectedProduct.price).toFixed(2)}€</span>
-                      </div>
-                      <div className="text-right text-[10px] text-zinc-400 mt-1">IVA NO INCLUIDO</div>
-                    </div>
+                {step === 3 && (() => {
+                  const doPayment = async (method: 'tarjeta' | 'bizum') => {
+                    if (!user) return;
+                    setIsSubmitting(true);
+                    try {
+                      let customDesignStorageUrl = '';
+                      let logoStorageUrl = '';
 
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Número de Tarjeta (Simulado)</label>
-                        <div className="relative">
-                          <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
-                          <input required type="text" placeholder="0000 0000 0000 0000" className="w-full pl-10 pr-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Caducidad</label>
-                          <input required type="text" placeholder="MM/AA" className="w-full px-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">CVC</label>
-                          <input required type="text" placeholder="123" className="w-full px-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                      </div>
-                    </div>
+                      if (designMode === 'custom' && customDesignImage) {
+                        customDesignStorageUrl = await uploadFileToStorage(
+                          customDesignImage,
+                          `orders/${user.uid}/${Date.now()}_design`
+                        );
+                      }
 
-                    <div className="flex gap-4 pt-4">
-                      <button type="button" onClick={() => setStep(2)} className="px-6 py-3 bg-zinc-100 text-zinc-900 rounded-xl font-medium hover:bg-zinc-200 transition-colors">
-                        Atrás
-                      </button>
-                      <button 
-                        type="submit" 
-                        disabled={isSubmitting}
-                        className="flex-1 py-3 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50 flex flex-col items-center justify-center gap-0.5"
-                      >
-                        {isSubmitting ? 'Procesando...' : <span>Pagar {Number(selectedProduct.price).toFixed(2)}€</span>}
-                        {!isSubmitting && <span className="text-[10px] font-normal opacity-80 text-center leading-tight">IVA NO INCLUIDO<br/>PORTES INCLUIDOS<br/>ENTREGA 7-10 DÍAS</span>}
-                      </button>
+                      let customDesignBackStorageUrl = '';
+                      if (customDesignSides === '2' && customDesignImageBack) {
+                        customDesignBackStorageUrl = await uploadFileToStorage(
+                          customDesignImageBack,
+                          `orders/${user.uid}/${Date.now()}_design_back`
+                        );
+                      }
+
+                      if (logoPreview) {
+                        logoStorageUrl = await uploadFileToStorage(
+                          logoPreview,
+                          `orders/${user.uid}/${Date.now()}_logo`
+                        );
+                      }
+
+                      const orderId = crypto.randomUUID();
+                      await setDoc(doc(db, 'orders', orderId), {
+                        id: orderId,
+                        userId: user.uid,
+                        cardId: selectedCard,
+                        productId: selectedProduct.optionId || selectedProduct.id,
+                        productName: selectedProduct.name,
+                        price: selectedProduct.price,
+                        designMode: selectedProduct.isCard ? designMode : null,
+                        design: selectedProduct.isCard ? (designMode === 'template' ? selectedDesign.id : 'custom') : null,
+                        customDesignSides: designMode === 'custom' ? customDesignSides : null,
+                        customDesignBackUrl: customDesignBackStorageUrl,
+                        corporateColor: selectedProduct.isCard ? corporateColor : null,
+                        logoUrl: logoStorageUrl, 
+                        qrLogoUrl: selectedProduct.isCard ? (qrLogoPreview || '') : '',
+                        customDesignUrl: customDesignStorageUrl,
+                        status: 'pending',
+                        billingAddress: billing,
+                        billingType: billingType,
+                        shippingAddress: shippingSameAsBilling ? billing : shipping,
+                        createdAt: serverTimestamp()
+                      });
+
+                      const { getFunctions, httpsCallable } = await import('firebase/functions');
+                      const functions = getFunctions();
+                      const createPayment = httpsCallable(functions, 'createRedsysPayment');
+
+                      const response = await createPayment({
+                        planId: 'store',
+                        uid: user.uid,
+                        orderId: orderId,
+                        amount: selectedProduct.price
+                      });
+
+                      const data = response.data as any;
+
+                      const form = document.createElement('form');
+                      form.method = 'POST';
+                      form.action = data.redsysUrl;
+
+                      const params = {
+                        Ds_SignatureVersion: data.Ds_SignatureVersion,
+                        Ds_MerchantParameters: data.Ds_MerchantParameters,
+                        Ds_Signature: data.Ds_Signature
+                      };
+
+                      for (const [key, value] of Object.entries(params)) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = value as string;
+                        form.appendChild(input);
+                      }
+
+                      document.body.appendChild(form);
+                      form.submit();
+
+                    } catch (error) {
+                      console.error("Payment error:", error);
+                      alert("Error al procesar el pago.");
+                      setIsSubmitting(false);
+                    }
+                  };
+
+                  return (
+                    <div className="space-y-6">
+                      <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 mb-6">
+                        <div className="flex justify-between mb-2">
+                          <span className="text-zinc-600">{selectedProduct.name}</span>
+                          <span className="font-medium">{Number(selectedProduct.price).toFixed(2)}€</span>
+                        </div>
+                        <div className="flex justify-between mb-4">
+                          <span className="text-zinc-600">Envío</span>
+                          <span className="font-medium">Gratis</span>
+                        </div>
+                        <div className="flex justify-between pt-4 border-t border-zinc-200 font-bold text-lg">
+                          <span>Total</span>
+                          <span>{Number(selectedProduct.price).toFixed(2)}€</span>
+                        </div>
+                        <div className="text-right text-[10px] text-zinc-400 mt-1">IVA NO INCLUIDO</div>
+                      </div>
+
+                      {isSubmitting ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-zinc-500">
+                          <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-4"></div>
+                          <p>Conectando con pago seguro...</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <button 
+                            type="button"
+                            onClick={() => doPayment('tarjeta')}
+                            className="w-full flex items-center justify-between p-4 border border-zinc-300 rounded-xl hover:border-brand-500 hover:ring-1 hover:ring-brand-500 transition-all bg-white"
+                          >
+                            <div className="flex items-center gap-3">
+                              <CreditCard className="w-6 h-6 text-zinc-400" />
+                              <span className="font-medium text-zinc-900">Pagar con tarjeta</span>
+                            </div>
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/4/4b/Redsys_logo.svg" alt="Redsys" className="h-6" />
+                          </button>
+
+                          <button 
+                            type="button"
+                            onClick={() => doPayment('bizum')}
+                            className="w-full flex items-center justify-between p-4 border border-zinc-300 rounded-xl hover:border-brand-500 hover:ring-1 hover:ring-brand-500 transition-all bg-white"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Smartphone className="w-6 h-6 text-zinc-400" />
+                              <span className="font-medium text-zinc-900">Pagar con Bizum</span>
+                            </div>
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/e/ec/Bizum.svg" alt="Bizum" className="h-6" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex gap-4 pt-4">
+                        <button type="button" onClick={() => setStep(2)} disabled={isSubmitting} className="px-6 py-3 bg-zinc-100 text-zinc-900 rounded-xl font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50">
+                          Atrás
+                        </button>
+                      </div>
                     </div>
-                  </form>
-                )}
+                  );
+                })()}
               </section>
             </div>
 

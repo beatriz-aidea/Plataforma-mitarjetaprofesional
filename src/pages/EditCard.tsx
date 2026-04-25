@@ -20,8 +20,61 @@ export default function EditCard() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [cardType, setCardType] = useState<'estatica' | 'dinamica'>('dinamica');
   const [availableCustomFields, setAvailableCustomFields] = useState<any[]>([]);
+  const [assignedCustomFields, setAssignedCustomFields] = useState<any[]>([]);
   const [visibleFields, setVisibleFields] = useState<string[] | null>(null);
   const [showPlans, setShowPlans] = useState(false);
+
+  useEffect(() => {
+    const fetchAssignedFields = async () => {
+      if (!user) return;
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        let userAssigned: any[] = [];
+        if (userDocSnap.exists() && userDocSnap.data().assignedFields) {
+          userAssigned = userDocSnap.data().assignedFields;
+        }
+
+        let companyAssigned: any[] = [];
+        if (companyId) {
+          const companyDocRef = doc(db, 'companies', companyId);
+          const companyDocSnap = await getDoc(companyDocRef);
+          if (companyDocSnap.exists() && companyDocSnap.data().assignedFields) {
+            companyAssigned = companyDocSnap.data().assignedFields;
+          }
+        }
+
+        // Merge (user overrides company)
+        const mergedFieldsMap = new Map();
+        companyAssigned.forEach(f => mergedFieldsMap.set(f.fieldId, f.value));
+        userAssigned.forEach(f => mergedFieldsMap.set(f.fieldId, f.value));
+
+        const result: any[] = [];
+        for (const [fieldId, value] of mergedFieldsMap.entries()) {
+          const fieldDocRef = doc(db, 'fieldDefinitions', fieldId);
+          const fieldDocSnap = await getDoc(fieldDocRef);
+          if (fieldDocSnap.exists()) {
+            const fd = fieldDocSnap.data();
+            result.push({
+              fieldId,
+              value: value || '',
+              label: fd.label,
+              type: fd.type,
+              icon: fd.icon
+            });
+          }
+        }
+        setAssignedCustomFields(result);
+      } catch (err) {
+        console.error("Error fetching assigned fields:", err);
+      }
+    };
+    fetchAssignedFields();
+  }, [user, companyId]);
+
+  const updateAssignedCustomField = (fieldId: string, value: string) => {
+    setAssignedCustomFields(prev => prev.map(f => f.fieldId === fieldId ? { ...f, value } : f));
+  };
 
   const [formData, setFormData] = useState({
     identity: { firstName: '', lastName: '', company: '', role: '', photoUrl: '', companyLogoUrl: '' },
@@ -180,6 +233,15 @@ export default function EditCard() {
   }, [cardId, user, userRole, navigate]);
 
   const handleChange = (section: string, field: string, value: string) => {
+    // Validación de seguridad para URLs: Bloquea protocolos maliciosos como javascript:
+    // pero permite seguir escribiendo dominios normales libremente.
+    if (section === 'social' || (section === 'contact' && field === 'website')) {
+      const lower = value.toLowerCase().trimLeft();
+      if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+        return; // Bloquea URLs peligrosas
+      }
+    }
+
     setFormData(prev => ({
       ...prev,
       [section]: {
@@ -325,10 +387,19 @@ export default function EditCard() {
       // Sync company to user profile if registered
       if (!user.isAnonymous) {
         const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, {
+        const updatePayload: any = {
           companyName: formData.identity.company,
           updatedAt: serverTimestamp()
-        }).catch(err => console.warn("Could not update user company", err));
+        };
+        
+        if (assignedCustomFields.length > 0) {
+          updatePayload.assignedFields = assignedCustomFields.map(f => ({
+            fieldId: f.fieldId,
+            value: f.value
+          }));
+        }
+
+        await updateDoc(userRef, updatePayload).catch(err => console.warn("Could not update user company", err));
       }
 
       navigate(targetPath || `/success/${encodeURIComponent(id)}`);
@@ -783,6 +854,40 @@ export default function EditCard() {
             </div>
           </section>
           
+          {assignedCustomFields.length > 0 && (
+            <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Plus className="w-6 h-6 text-brand-600" />
+                <h2 className="text-2xl font-bold text-zinc-900">Información adicional</h2>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-6">
+                {assignedCustomFields.map((field) => (
+                  <div key={field.fieldId}>
+                    <label className="flex items-center gap-2 text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                       {field.label}
+                    </label>
+                    {field.type === 'custom_date' ? (
+                      <input 
+                        type="date" 
+                        value={field.value} 
+                        onChange={e => updateAssignedCustomField(field.fieldId, e.target.value)} 
+                        className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300"
+                      />
+                    ) : (
+                      <input 
+                        type="text" 
+                        value={field.value} 
+                        onChange={e => updateAssignedCustomField(field.fieldId, e.target.value)} 
+                        className="w-full px-4 py-3 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none text-zinc-700 placeholder:text-zinc-300" 
+                        placeholder="https://..."
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           <div className="flex justify-end mb-8">
             <button
               type="submit"

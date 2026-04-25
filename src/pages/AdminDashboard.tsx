@@ -1,11 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Fragment } from 'react';
 import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import Logo from '../components/Logo';
-import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode, Ban } from 'lucide-react';
+import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode, Ban, Copy, Puzzle, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
+
+const renderDate = (dateObj: any) => {
+  if (!dateObj) return '-';
+  if (dateObj.toDate) return new Date(dateObj.toDate()).toLocaleDateString();
+  if (dateObj instanceof Date) return dateObj.toLocaleDateString();
+  return new Date(dateObj).toLocaleDateString();
+};
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -49,11 +56,82 @@ export default function AdminDashboard() {
     icon: ''
   });
 
+  const [fieldDefinitions, setFieldDefinitions] = useState<any[]>([]);
+  const [showFieldForm, setShowFieldForm] = useState(false);
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [fieldToDelete, setFieldToDelete] = useState<{id: string, label: string} | null>(null);
+  const [managingFieldsFor, setManagingFieldsFor] = useState<{type: 'user' | 'company', id: string, name: string} | null>(null);
+  const [selectedAssignedFields, setSelectedAssignedFields] = useState<string[]>([]);
+  
+  const handleOpenManageFields = (type: 'user' | 'company', entity: any) => {
+    const fields = entity.assignedFields || [];
+    setSelectedAssignedFields(fields.map((f: any) => f.fieldId));
+    setManagingFieldsFor({ 
+      type, 
+      id: entity.id, 
+      name: type === 'user' ? entity.email : entity.name 
+    });
+  };
+
+  const handleToggleAssignedField = (fieldId: string) => {
+    setSelectedAssignedFields(prev => 
+      prev.includes(fieldId) ? prev.filter(id => id !== fieldId) : [...prev, fieldId]
+    );
+  };
+
+  const handleSaveAssignedFields = async () => {
+    if (!managingFieldsFor) return;
+    const { type, id } = managingFieldsFor;
+    
+    try {
+      const listToUpdate = type === 'user' ? users : companies;
+      const entity = listToUpdate.find(e => e.id === id);
+      if (!entity) return;
+
+      const existingFields = entity.assignedFields || [];
+      const newAssignedFields = selectedAssignedFields.map(fieldId => {
+        const existing = existingFields.find((f: any) => f.fieldId === fieldId);
+        return existing ? existing : { fieldId, value: "" };
+      });
+
+      const collectionName = type === 'user' ? 'users' : 'companies';
+      await updateDoc(doc(db, collectionName, id), {
+        assignedFields: newAssignedFields
+      });
+
+      if (type === 'user') {
+        setUsers(users.map(u => u.id === id ? { ...u, assignedFields: newAssignedFields } : u));
+      } else {
+        setCompanies(companies.map(c => c.id === id ? { ...c, assignedFields: newAssignedFields } : c));
+      }
+
+      alert('Campos guardados correctamente');
+      setManagingFieldsFor(null);
+    } catch (err) {
+      console.error(err);
+      alert('Error al guardar los campos');
+    }
+  };
+
+  const [newFieldDefinition, setNewFieldDefinition] = useState({
+    type: 'preset',
+    label: '',
+    icon: 'link',
+    placeholder: ''
+  });
+
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ type: 'user' | 'card' | 'product' | 'field' | 'company', id: string } | null>(null);
   const [companyAdminModal, setCompanyAdminModal] = useState<{ userId: string } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'enterprises', 'cards', 'products'
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  const [userFilters, setUserFilters] = useState({ email: '', company: '', role: '', date: '' });
+  const [companyFilters, setCompanyFilters] = useState({ name: '', type: '', status: '', date: '' });
+  const [cardFilters, setCardFilters] = useState({ email: '', name: '', company: '', status: '' });
+  const [productFilters, setProductFilters] = useState({ name: '', price: '' });
+  const [orderFilters, setOrderFilters] = useState({ id: '', user: '', status: '', date: '', address: '' });
 
   const compressImage = (file: File, callback: (dataUrl: string) => void) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -111,6 +189,19 @@ export default function AdminDashboard() {
       reader.readAsDataURL(file);
     }
   };
+
+  useEffect(() => {
+    const fetchFieldDefinitions = async () => {
+      try {
+        if (!auth.currentUser) return;
+        const snapshot = await getDocs(query(collection(db, 'fieldDefinitions'), orderBy('createdAt', 'desc')));
+        setFieldDefinitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (err) {
+        console.error("Error fetching fieldDefinitions:", err);
+      }
+    };
+    fetchFieldDefinitions();
+  }, []);
 
   useEffect(() => {
     const fetchAdminData = async () => {
@@ -240,6 +331,77 @@ export default function AdminDashboard() {
     } finally {
       setCompanyAdminModal(null);
       setSelectedCompanyId('');
+    }
+  };
+
+  const handleDeleteFieldDefinition = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'fieldDefinitions', id));
+      const snapshot = await getDocs(query(collection(db, 'fieldDefinitions'), orderBy('createdAt', 'desc')));
+      setFieldDefinitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setFieldToDelete(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleEditFieldDefinition = (field: any) => {
+    setEditingFieldId(field.id);
+    setNewFieldDefinition({
+      type: field.type,
+      label: field.label,
+      icon: field.icon || '',
+      placeholder: field.placeholder || ''
+    });
+    setShowFieldForm(true);
+  };
+
+  const handleDuplicateFieldDefinition = (field: any) => {
+    setEditingFieldId(null);
+    setNewFieldDefinition({
+      type: field.type,
+      label: `${field.label} (copia)`,
+      icon: field.icon || '',
+      placeholder: field.placeholder || ''
+    });
+    setShowFieldForm(true);
+  };
+
+  const handleSaveFieldDefinition = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFieldDefinition.label.trim()) return;
+    try {
+      const inputType = newFieldDefinition.type === 'custom_date' ? 'date' : newFieldDefinition.type === 'custom_url' ? 'url' : 'text';
+      
+      const payload: any = {
+        type: newFieldDefinition.type,
+        label: newFieldDefinition.label,
+        inputType
+      };
+      
+      if (newFieldDefinition.type !== 'custom_date') {
+        payload.icon = newFieldDefinition.icon;
+      }
+      
+      if (newFieldDefinition.type === 'preset') {
+        payload.placeholder = newFieldDefinition.placeholder;
+      }
+
+      if (editingFieldId) {
+        payload.updatedAt = serverTimestamp();
+        await updateDoc(doc(db, 'fieldDefinitions', editingFieldId), payload);
+      } else {
+        payload.createdAt = serverTimestamp();
+        await setDoc(doc(collection(db, 'fieldDefinitions')), payload);
+      }
+
+      const snapshot = await getDocs(query(collection(db, 'fieldDefinitions'), orderBy('createdAt', 'desc')));
+      setFieldDefinitions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setShowFieldForm(false);
+      setEditingFieldId(null);
+      setNewFieldDefinition({ type: 'preset', label: '', icon: 'link', placeholder: '' });
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -502,6 +664,59 @@ export default function AdminDashboard() {
     );
   }
 
+  const filteredUsers = users.filter(user => {
+    const searchMatch = (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.role || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const emailMatch = (user.email || '').toLowerCase().includes(userFilters.email.toLowerCase());
+    const companyMatch = (user.companyName || '').toLowerCase().includes(userFilters.company.toLowerCase());
+    const roleMatch = (user.role || '').toLowerCase().includes(userFilters.role.toLowerCase());
+    const dateMatch = renderDate(user.createdAt).toLowerCase().includes(userFilters.date.toLowerCase());
+    return searchMatch && emailMatch && companyMatch && roleMatch && dateMatch;
+  });
+
+  const filteredCompanies = companies.filter(company => {
+    const searchMatch = (company.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (company.type || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const nameMatch = (company.name || '').toLowerCase().includes(companyFilters.name.toLowerCase());
+    const typeMatch = (company.type || '').toLowerCase().includes(companyFilters.type.toLowerCase());
+    const statusMatch = (company.status || '').toLowerCase().includes(companyFilters.status.toLowerCase());
+    const dateMatch = renderDate(company.createdAt).toLowerCase().includes(companyFilters.date.toLowerCase());
+    return searchMatch && nameMatch && typeMatch && statusMatch && dateMatch;
+  });
+
+  const filteredCards = cards.filter(card => {
+    const searchMatch = (card.contact?.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (card.identity?.firstName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (card.identity?.lastName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (card.identity?.company || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const emailMatch = (card.contact?.email || '').toLowerCase().includes(cardFilters.email.toLowerCase());
+    const nameMatch = `${card.identity?.firstName || ''} ${card.identity?.lastName || ''}`.toLowerCase().includes(cardFilters.name.toLowerCase());
+    const companyMatch = (card.identity?.company || '').toLowerCase().includes(cardFilters.company.toLowerCase());
+    const statusText = !card.ownerUid ? 'Pendiente' : card.status === 'inactive' ? 'Inactiva' : 'Activa';
+    const statusMatch = statusText.toLowerCase().includes(cardFilters.status.toLowerCase());
+    return searchMatch && emailMatch && nameMatch && companyMatch && statusMatch;
+  });
+
+  const filteredProducts = products.filter(product => {
+    const searchMatch = (product.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const nameMatch = (product.name || '').toLowerCase().includes(productFilters.name.toLowerCase());
+    const priceMatch = (product.price || '').toString().toLowerCase().includes(productFilters.price.toLowerCase());
+    return searchMatch && nameMatch && priceMatch;
+  });
+
+  const filteredOrders = orders.filter(order => {
+    const searchMatch = (order.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (order.userEmail || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (order.shippingAddress?.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const idMatch = (order.id || '').toLowerCase().includes(orderFilters.id.toLowerCase());
+    const userMatch = (order.userEmail || '').toLowerCase().includes(orderFilters.user.toLowerCase());
+    const statusMatch = (order.status || '').toLowerCase().includes(orderFilters.status.toLowerCase());
+    const dateMatch = (order.createdAt?.toDate ? new Date(order.createdAt.toDate()).toLocaleDateString() : '-').toLowerCase().includes(orderFilters.date.toLowerCase());
+    const addressMatch = (order.shippingAddress?.fullName || '').toLowerCase().includes(orderFilters.address.toLowerCase());
+    return searchMatch && idMatch && userMatch && statusMatch && dateMatch && addressMatch;
+  });
+
   return (
     <div className="min-h-screen bg-zinc-50 pb-20">
       <header className="bg-white border-b border-zinc-200 sticky top-0 z-10">
@@ -548,48 +763,60 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-4 mb-8 border-b border-zinc-200">
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'users' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            Usuarios
-          </button>
-          <button
-            onClick={() => setActiveTab('enterprises')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'enterprises' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            Empresas
-          </button>
-          <button
-            onClick={() => setActiveTab('cards')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'cards' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            Tarjetas
-          </button>
-          <button
-            onClick={() => setActiveTab('products')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'products' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            Productos NFC
-          </button>
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'orders' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
-            }`}
-          >
-            Pedidos
-          </button>
+        {/* Tabs and Search */}
+        <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4 mb-8 border-b border-zinc-200">
+          <div className="flex gap-4 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'users' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              Usuarios
+            </button>
+            <button
+              onClick={() => setActiveTab('enterprises')}
+              className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'enterprises' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              Empresas
+            </button>
+            <button
+              onClick={() => setActiveTab('cards')}
+              className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'cards' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              Tarjetas
+            </button>
+            <button
+              onClick={() => setActiveTab('products')}
+              className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'products' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              Productos NFC
+            </button>
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`pb-4 px-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                activeTab === 'orders' ? 'border-brand-600 text-brand-600' : 'border-transparent text-zinc-500 hover:text-zinc-700'
+              }`}
+            >
+              Pedidos
+            </button>
+          </div>
+          <div className="pb-4 relative w-full sm:w-64 shrink-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input 
+              type="text" 
+              placeholder="Buscar en la tabla..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-white border border-zinc-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-500 outline-none transition-all focus:border-brand-500"
+            />
+          </div>
         </div>
 
         {/* Users Table */}
@@ -602,19 +829,33 @@ export default function AdminDashboard() {
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Email</th>
-                  <th className="px-6 py-3 font-medium">Empresa</th>
-                  <th className="px-6 py-3 font-medium">Rol</th>
-                  <th className="px-6 py-3 font-medium">Tarjetas</th>
-                  <th className="px-6 py-3 font-medium">Acciones</th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Email</div>
+                    <input type="text" placeholder="Filtrar por email..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={userFilters.email} onChange={e => setUserFilters({...userFilters, email: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Empresa</div>
+                    <input type="text" placeholder="Filtrar por empresa..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={userFilters.company} onChange={e => setUserFilters({...userFilters, company: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Rol</div>
+                    <input type="text" placeholder="Filtrar por rol..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={userFilters.role} onChange={e => setUserFilters({...userFilters, role: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Fecha de alta</div>
+                    <input type="text" placeholder="Filtrar por fecha..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={userFilters.date} onChange={e => setUserFilters({...userFilters, date: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium align-top">Tarjetas</th>
+                  <th className="px-6 py-3 font-medium align-top">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {/* Registered Users */}
-                {users.map(user => {
+                {filteredUsers.map(user => {
                   const userCards = cards.filter(c => c.ownerUid === user.id);
                   return (
-                    <tr key={user.id} className="hover:bg-zinc-50">
+                    <Fragment key={user.id}>
+                    <tr className="hover:bg-zinc-50">
                       <td className="px-6 py-4 font-medium text-zinc-900">
                         {user.email}
                         {user.role === 'admin' && <span className="ml-2 px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded uppercase">Admin</span>}
@@ -633,6 +874,7 @@ export default function AdminDashboard() {
                           <option value="admin">Administrador</option>
                         </select>
                       </td>
+                      <td className="px-6 py-4 text-zinc-500">{renderDate(user.createdAt)}</td>
                       <td className="px-6 py-4 text-zinc-500">{userCards.length} tarjetas</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -650,6 +892,13 @@ export default function AdminDashboard() {
                             ))}
                           </div>
                           <button
+                            onClick={() => handleOpenManageFields('user', user)}
+                            className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Gestionar campos"
+                          >
+                            <Puzzle className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => confirmDelete('user', user.id)}
                             className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Eliminar usuario"
@@ -659,6 +908,54 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                     </tr>
+                    {managingFieldsFor?.type === 'user' && managingFieldsFor.id === user.id && (
+                      <tr className="bg-brand-50/50">
+                        <td colSpan={5} className="px-6 py-4 border-t border-brand-100">
+                          <div className="bg-white rounded-xl border border-brand-200 p-4 shadow-sm">
+                            <h4 className="font-semibold text-zinc-900 mb-4">Campos asignados a {managingFieldsFor.name}</h4>
+                            
+                            {fieldDefinitions.length === 0 ? (
+                              <p className="text-sm text-zinc-500 italic">No hay campos personalizados en el catálogo.</p>
+                            ) : (
+                              <div className="space-y-2 mb-6">
+                                {fieldDefinitions.map(field => (
+                                  <label key={field.id} className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition">
+                                    <input 
+                                      type="checkbox"
+                                      checked={selectedAssignedFields.includes(field.id)}
+                                      onChange={() => handleToggleAssignedField(field.id)}
+                                      className="rounded border-zinc-300 text-brand-600 focus:ring-brand-500 w-4 h-4"
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="font-medium text-sm text-zinc-900">{field.label}</span>
+                                    </div>
+                                    <span className="ml-auto px-2 py-1 bg-zinc-100 rounded-lg text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                                      {field.type === 'preset' ? 'Predefinido' : field.type === 'custom_url' ? 'URL' : 'Fecha'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-3 justify-end pt-4 border-t border-zinc-100">
+                              <button 
+                                onClick={() => setManagingFieldsFor(null)}
+                                className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors"
+                              >
+                                Cerrar
+                              </button>
+                              <button 
+                                onClick={handleSaveAssignedFields}
+                                className="px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 rounded-xl transition-colors"
+                              >
+                                Guardar asignación
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
 
@@ -721,20 +1018,34 @@ export default function AdminDashboard() {
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Nombre</th>
-                  <th className="px-6 py-3 font-medium">Tipo</th>
-                  <th className="px-6 py-3 font-medium">Estado</th>
-                  <th className="px-6 py-3 font-medium">Admin asignado</th>
-                  <th className="px-6 py-3 font-medium">Nº de miembros</th>
-                  <th className="px-6 py-3 font-medium">Acciones</th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Nombre</div>
+                    <input type="text" placeholder="Filtrar por nombre..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={companyFilters.name} onChange={e => setCompanyFilters({...companyFilters, name: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Tipo</div>
+                    <input type="text" placeholder="Filtrar por tipo..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={companyFilters.type} onChange={e => setCompanyFilters({...companyFilters, type: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Estado</div>
+                    <input type="text" placeholder="Filtrar por estado..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={companyFilters.status} onChange={e => setCompanyFilters({...companyFilters, status: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Fecha de alta</div>
+                    <input type="text" placeholder="Filtrar por fecha..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={companyFilters.date} onChange={e => setCompanyFilters({...companyFilters, date: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium align-top">Admin asignado</th>
+                  <th className="px-6 py-3 font-medium align-top">Nº de miembros</th>
+                  <th className="px-6 py-3 font-medium align-top">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {companies.map(company => {
+                {filteredCompanies.map(company => {
                   const adminUser = users.find(u => u.id === company.adminUid);
                   const membersCount = users.filter(u => u.companyId === company.id).length;
                   return (
-                    <tr key={company.id} className="hover:bg-zinc-50">
+                    <Fragment key={company.id}>
+                    <tr className="hover:bg-zinc-50">
                       <td className="px-6 py-4 font-medium text-zinc-900">{company.name}</td>
                       <td className="px-6 py-4 text-zinc-500 capitalize">{company.type}</td>
                       <td className="px-6 py-4">
@@ -744,6 +1055,7 @@ export default function AdminDashboard() {
                           {company.status === 'activo' ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
+                      <td className="px-6 py-4 text-zinc-500">{renderDate(company.createdAt)}</td>
                       <td className="px-6 py-4 text-zinc-500">{adminUser ? adminUser.email : 'Sin asignar'}</td>
                       <td className="px-6 py-4 text-zinc-500">{membersCount}</td>
                       <td className="px-6 py-4">
@@ -754,6 +1066,13 @@ export default function AdminDashboard() {
                             title="Editar empresa"
                           >
                             <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenManageFields('company', company)}
+                            className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Gestionar campos"
+                          >
+                            <Puzzle className="w-4 h-4" />
                           </button>
                           <button
                             onClick={async () => {
@@ -776,6 +1095,54 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                     </tr>
+                    {managingFieldsFor?.type === 'company' && managingFieldsFor.id === company.id && (
+                      <tr className="bg-brand-50/50">
+                        <td colSpan={6} className="px-6 py-4 border-t border-brand-100">
+                          <div className="bg-white rounded-xl border border-brand-200 p-4 shadow-sm">
+                            <h4 className="font-semibold text-zinc-900 mb-4">Campos asignados a {managingFieldsFor.name}</h4>
+                            
+                            {fieldDefinitions.length === 0 ? (
+                              <p className="text-sm text-zinc-500 italic">No hay campos personalizados en el catálogo.</p>
+                            ) : (
+                              <div className="space-y-2 mb-6">
+                                {fieldDefinitions.map(field => (
+                                  <label key={field.id} className="flex items-center gap-3 p-3 rounded-lg border border-zinc-200 hover:bg-zinc-50 cursor-pointer transition">
+                                    <input 
+                                      type="checkbox"
+                                      checked={selectedAssignedFields.includes(field.id)}
+                                      onChange={() => handleToggleAssignedField(field.id)}
+                                      className="rounded border-zinc-300 text-brand-600 focus:ring-brand-500 w-4 h-4"
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="font-medium text-sm text-zinc-900">{field.label}</span>
+                                    </div>
+                                    <span className="ml-auto px-2 py-1 bg-zinc-100 rounded-lg text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+                                      {field.type === 'preset' ? 'Predefinido' : field.type === 'custom_url' ? 'URL' : 'Fecha'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex gap-3 justify-end pt-4 border-t border-zinc-100">
+                              <button 
+                                onClick={() => setManagingFieldsFor(null)}
+                                className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors"
+                              >
+                                Cerrar
+                              </button>
+                              <button 
+                                onClick={handleSaveAssignedFields}
+                                className="px-4 py-2 text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 rounded-xl transition-colors"
+                              >
+                                Guardar asignación
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
                 {companies.length === 0 && (
@@ -801,15 +1168,27 @@ export default function AdminDashboard() {
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                 <tr>
-                  <th className="px-6 py-3 font-medium">Email</th>
-                  <th className="px-6 py-3 font-medium">Nombre</th>
-                  <th className="px-6 py-3 font-medium">Empresa</th>
-                  <th className="px-6 py-3 font-medium">Estado</th>
-                  <th className="px-6 py-3 font-medium">Acciones</th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Email</div>
+                    <input type="text" placeholder="Filtrar por email..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={cardFilters.email} onChange={e => setCardFilters({...cardFilters, email: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Nombre</div>
+                    <input type="text" placeholder="Filtrar por nombre..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={cardFilters.name} onChange={e => setCardFilters({...cardFilters, name: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Empresa</div>
+                    <input type="text" placeholder="Filtrar por empresa..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={cardFilters.company} onChange={e => setCardFilters({...cardFilters, company: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium">
+                    <div>Estado</div>
+                    <input type="text" placeholder="Filtrar por estado..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={cardFilters.status} onChange={e => setCardFilters({...cardFilters, status: e.target.value})} />
+                  </th>
+                  <th className="px-6 py-3 font-medium align-top">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
-                {cards.map(card => (
+                {filteredCards.map(card => (
                   <tr key={card.id} className="hover:bg-zinc-50">
                     <td className="px-6 py-4 font-medium text-zinc-900">{card.contact?.email || 'Sin email'}</td>
                     <td className="px-6 py-4 text-zinc-500">{card.identity?.firstName} {card.identity?.lastName}</td>
@@ -876,20 +1255,26 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                   <tr>
-                    <th className="px-6 py-3 font-medium">Imagen</th>
-                    <th className="px-6 py-3 font-medium">Nombre</th>
-                    <th className="px-6 py-3 font-medium">Precio</th>
-                    <th className="px-6 py-3 font-medium">Acciones</th>
+                    <th className="px-6 py-3 font-medium align-top">Imagen</th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Nombre</div>
+                      <input type="text" placeholder="Filtrar por nombre..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={productFilters.name} onChange={e => setProductFilters({...productFilters, name: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Precio</div>
+                      <input type="text" placeholder="Filtrar por precio..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={productFilters.price} onChange={e => setProductFilters({...productFilters, price: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium align-top">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {products.length === 0 ? (
+                  {filteredProducts.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-6 py-8 text-center text-zinc-500">
                         No hay productos en la galería. Añade uno para empezar.
                       </td>
                     </tr>
-                  ) : products.map(product => (
+                  ) : filteredProducts.map(product => (
                     <tr key={product.id} className="hover:bg-zinc-50">
                       <td className="px-6 py-4">
                         {product.imageUrl ? (
@@ -939,21 +1324,36 @@ export default function AdminDashboard() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
                   <tr>
-                    <th className="px-6 py-3 font-medium">ID Pedido</th>
-                    <th className="px-6 py-3 font-medium">Usuario</th>
-                    <th className="px-6 py-3 font-medium">Estado</th>
-                    <th className="px-6 py-3 font-medium">Fecha</th>
-                    <th className="px-6 py-3 font-medium">Dirección</th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>ID Pedido</div>
+                      <input type="text" placeholder="Filtrar por ID..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={orderFilters.id} onChange={e => setOrderFilters({...orderFilters, id: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Usuario</div>
+                      <input type="text" placeholder="Filtrar por usuario..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={orderFilters.user} onChange={e => setOrderFilters({...orderFilters, user: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Estado</div>
+                      <input type="text" placeholder="Filtrar por estado..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={orderFilters.status} onChange={e => setOrderFilters({...orderFilters, status: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Fecha</div>
+                      <input type="text" placeholder="Filtrar por fecha..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={orderFilters.date} onChange={e => setOrderFilters({...orderFilters, date: e.target.value})} />
+                    </th>
+                    <th className="px-6 py-3 font-medium">
+                      <div>Dirección</div>
+                      <input type="text" placeholder="Filtrar por dirección..." className="mt-1 w-full px-2 py-1 text-xs border border-zinc-200 rounded outline-none font-normal" value={orderFilters.address} onChange={e => setOrderFilters({...orderFilters, address: e.target.value})} />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
-                  {orders.length === 0 ? (
+                  {filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="px-6 py-8 text-center text-zinc-500">
                         No hay pedidos registrados.
                       </td>
                     </tr>
-                  ) : orders.map(order => {
+                  ) : filteredOrders.map(order => {
                     const user = users.find(u => u.id === order.userId);
                     return (
                       <tr key={order.id} className="hover:bg-zinc-50">
@@ -987,6 +1387,219 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* --- NUEVA SECCIÓN: Campos Personalizados --- */}
+        <section className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mt-8">
+          <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50 flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-lg text-zinc-900">Campos Personalizados</h2>
+              <p className="text-sm text-zinc-500">Crea el catálogo de campos adicionales que podrás asignar a usuarios y empresas</p>
+            </div>
+            <button 
+              onClick={() => setShowFieldForm(!showFieldForm)}
+              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white rounded-xl text-sm font-medium hover:bg-brand-700 transition"
+            >
+              <Plus className="w-4 h-4" /> Nuevo campo
+            </button>
+          </div>
+
+          {showFieldForm && (
+            <div className="p-6 border-b border-zinc-200 bg-white">
+              <form onSubmit={handleSaveFieldDefinition} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Tipo de campo</label>
+                  <select 
+                    value={newFieldDefinition.type}
+                    onChange={e => setNewFieldDefinition({ ...newFieldDefinition, type: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                  >
+                    <option value="preset">Campo predefinido</option>
+                    <option value="custom_url">Enlace URL personalizado</option>
+                    <option value="custom_date">Campo de fecha</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre del campo</label>
+                  <input 
+                    type="text" 
+                    placeholder={
+                      newFieldDefinition.type === 'custom_date' ? "Ej: Fecha de alta, Cumpleaños, Aniversario..." :
+                      newFieldDefinition.type === 'custom_url' ? "Ej: Mi catálogo, Reservar cita, Ver vídeo..." :
+                      "Ej: Ficha en Idealista, Reservar mesa..."
+                    }
+                    value={newFieldDefinition.label}
+                    onChange={e => setNewFieldDefinition({ ...newFieldDefinition, label: e.target.value })}
+                    className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                    required 
+                  />
+                </div>
+                {newFieldDefinition.type !== 'custom_date' && (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Icono</label>
+                    <select 
+                      value={newFieldDefinition.icon}
+                      onChange={e => setNewFieldDefinition({ ...newFieldDefinition, icon: e.target.value })}
+                      className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                    >
+                      <option value="link">🔗 Enlace web</option>
+                      <option value="file">📄 Documento PDF</option>
+                      <option value="video">▶️ Vídeo</option>
+                      <option value="calendar">📅 Agenda / Reservas</option>
+                      <option value="whatsapp">
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#25D366">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15
+                            -.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075
+                            -.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059
+                            -.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52
+                            .149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52
+                            -.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51
+                            -.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372
+                            -.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074
+                            .149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625
+                            .712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413
+                            .248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.136.561 4.14 1.535 5.874L0 24l6.322-1.507
+                            A11.933 11.933 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818
+                            a9.818 9.818 0 01-5.007-1.371l-.36-.214-3.732.889.936-3.617-.235-.372
+                            A9.818 9.818 0 1112 21.818z"/>
+                          </svg>
+                          💬 WhatsApp
+                        </span>
+                      </option>
+                      <option value="map">📍 Ubicación</option>
+                      <option value="phone">📞 Teléfono directo</option>
+                    </select>
+                  </div>
+                )}
+                {newFieldDefinition.type === 'preset' ? (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Texto de ayuda</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Ej: https://calendly.com/..."
+                        value={newFieldDefinition.placeholder}
+                        onChange={e => setNewFieldDefinition({ ...newFieldDefinition, placeholder: e.target.value })}
+                        className="w-full p-2 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none"
+                      />
+                      <button 
+                        type="submit"
+                        className="px-4 py-2 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition whitespace-nowrap h-[42px]"
+                      >
+                        Guardar campo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <button 
+                      type="submit"
+                      className="w-full px-4 py-2 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition whitespace-nowrap h-[42px]"
+                    >
+                      Guardar campo
+                    </button>
+                  </div>
+                )}
+              </form>
+            </div>
+          )}
+
+          {fieldToDelete && (
+            <div className="bg-red-50 p-4 border-b border-red-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 text-red-600 rounded-full">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-red-900 text-sm">¿Eliminar el campo {fieldToDelete.label}?</h3>
+                  <p className="text-red-700 text-sm">Esta acción no se puede deshacer.</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setFieldToDelete(null)}
+                  className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => handleDeleteFieldDefinition(fieldToDelete.id)}
+                  className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-xl transition-colors"
+                >
+                  Sí, eliminar
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
+                <tr>
+                  <th className="px-6 py-3 font-medium">Icono</th>
+                  <th className="px-6 py-3 font-medium">Nombre</th>
+                  <th className="px-6 py-3 font-medium">Tipo</th>
+                  <th className="px-6 py-3 font-medium">Placeholder</th>
+                  <th className="px-6 py-3 font-medium text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {fieldDefinitions.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-zinc-500">
+                      No hay campos personalizados creados.
+                    </td>
+                  </tr>
+                ) : fieldDefinitions.map((field) => (
+                  <tr key={field.id} className="hover:bg-zinc-50">
+                    <td className="px-6 py-4 text-zinc-500 text-base">
+                      {field.icon === 'link' && '🔗'}
+                      {field.icon === 'file' && '📄'}
+                      {field.icon === 'video' && '▶️'}
+                      {field.icon === 'calendar' && '📅'}
+                      {field.icon === 'whatsapp' && '💬'}
+                      {field.icon === 'map' && '📍'}
+                      {field.icon === 'phone' && '📞'}
+                    </td>
+                    <td className="px-6 py-4 font-medium text-zinc-900">{field.label}</td>
+                    <td className="px-6 py-4 text-zinc-500">
+                      <span className="px-2 py-1 bg-zinc-100 rounded-lg text-xs font-medium">
+                        {field.type === 'preset' ? 'Predefinido' : field.type === 'custom_url' ? 'URL' : 'Fecha'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-zinc-500">{field.placeholder || '-'}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button 
+                          onClick={() => handleEditFieldDefinition(field)}
+                          className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDuplicateFieldDefinition(field)}
+                          className="p-2 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                          title="Duplicar"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => setFieldToDelete({ id: field.id, label: field.label })}
+                          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
       </main>
 
