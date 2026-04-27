@@ -13,7 +13,6 @@ export default function PublicCard() {
   const [ownerRole, setOwnerRole] = useState<string>('free');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [resolvedCustomFields, setResolvedCustomFields] = useState<Array<{fieldId: string, label: string, type: string, value: string}>>([]);
 
   useEffect(() => {
     const fetchCard = async () => {
@@ -26,45 +25,18 @@ export default function PublicCard() {
         if (docSnap.exists() && docSnap.data().status === 'active') {
           const cardData = docSnap.data();
           setCard(cardData);
-          setLoading(false);
           
-          if (cardData.ownerUid) {
+          // Only fetch owner's role if the current visitor is the owner or an admin
+          // This prevents permission denied errors for public visitors
+          if (cardData.ownerUid && user && (user.uid === cardData.ownerUid || user.email === 'beatriz@aidea.es' || user.uid === 'IekQHWYb1Ja2S7JB62th04pJkyZ2')) {
             try {
               const userRef = doc(db, 'users', cardData.ownerUid);
               const userSnap = await getDoc(userRef);
-              
               if (userSnap.exists()) {
-                const uData = userSnap.data();
-                
-                // Only set owner's role if the current visitor is the owner or an admin
-                // This prevents UI leakage for public visitors
-                if (user && (user.uid === cardData.ownerUid || user.email === 'beatriz@aidea.es' || user.uid === 'IekQHWYb1Ja2S7JB62th04pJkyZ2')) {
-                  setOwnerRole(uData.role || 'free');
-                }
-                
-                // PASO 1: Cargar assignedFields al montar PublicCard
-                if (uData.assignedFields && Array.isArray(uData.assignedFields)) {
-                  const fetchedFields: Array<{fieldId: string, label: string, type: string, value: string}> = [];
-                  for (const field of uData.assignedFields) {
-                    if (field.value) {
-                      const fieldDefRef = doc(db, 'fieldDefinitions', field.fieldId);
-                      const fieldDefSnap = await getDoc(fieldDefRef);
-                      if (fieldDefSnap.exists()) {
-                        const def = fieldDefSnap.data();
-                        fetchedFields.push({
-                          fieldId: field.fieldId,
-                          label: def.label,
-                          type: def.type,
-                          value: field.value
-                        });
-                      }
-                    }
-                  }
-                  setResolvedCustomFields(fetchedFields);
-                }
+                setOwnerRole(userSnap.data().role || 'free');
               }
             } catch (roleErr) {
-              console.warn("Could not fetch owner role or custom fields:", roleErr);
+              console.warn("Could not fetch owner role:", roleErr);
             }
           }
         } else {
@@ -85,22 +57,6 @@ export default function PublicCard() {
     
     const { identity, contact, address, context } = card;
     
-    let additionalFieldsVcard = '';
-    for (const field of resolvedCustomFields) {
-      const { type, label, value } = field;
-      const lowerLabel = label.toLowerCase();
-      
-      if (type === 'custom_date' && lowerLabel.includes('cumpleaños')) {
-        additionalFieldsVcard += `\nBDAY:${value}`;
-      } else if (type === 'custom_date') {
-        additionalFieldsVcard += `\nX-${label.toUpperCase().replace(/\s/g, '-')}:${value}`;
-      } else if (type === 'preset' && lowerLabel.includes('whatsapp')) {
-        additionalFieldsVcard += `\nTEL;TYPE=CELL,WORK;VALUE=uri:tel:${value}`;
-      } else {
-        additionalFieldsVcard += `\nX-${label.toUpperCase().replace(/\s/g, '-')}:${value}`;
-      }
-    }
-    
     const vcard = `BEGIN:VCARD
 VERSION:3.0
 N:${identity.lastName};${identity.firstName};;;
@@ -112,19 +68,17 @@ TEL;TYPE=WORK,VOICE:${contact.landline || ''}
 EMAIL;TYPE=WORK,INTERNET:${contact.email || ''}
 URL:${contact.website || ''}
 NOTE:${context.notes || ''}
-ADR;TYPE=WORK:;;${address.street || ''};${address.city || ''};${address.province || ''};${address.zip || ''};${address.country || ''}${additionalFieldsVcard}
+ADR;TYPE=WORK:;;${address.street || ''};${address.city || ''};${address.province || ''};${address.zip || ''};${address.country || ''}
 END:VCARD`;
 
-    const blob = new Blob([vcard], { type: 'text/vcard;charset=utf-8' });
+    const blob = new Blob([vcard], { type: 'text/vcard' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `${identity.firstName}_${identity.lastName}.vcf`;
-    
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const handleShare = async () => {
@@ -156,29 +110,7 @@ END:VCARD`;
     return `https://${url}`;
   };
 
-  if (loading) return (
-    <div className="min-h-screen font-sans pb-20 bg-zinc-100">
-      <div className="max-w-md mx-auto min-h-screen shadow-xl bg-white">
-        <div className="h-48 bg-zinc-200 animate-pulse" />
-        <div className="px-6 -mt-20 mb-8 text-center">
-          <div className="w-32 h-32 mx-auto rounded-full bg-zinc-300 animate-pulse mb-4" />
-          <div className="h-6 bg-zinc-200 rounded-full animate-pulse w-48 mx-auto mb-2" />
-          <div className="h-4 bg-zinc-200 rounded-full animate-pulse w-32 mx-auto mb-1" />
-          <div className="h-4 bg-zinc-200 rounded-full animate-pulse w-40 mx-auto" />
-        </div>
-        <div className="px-6 mb-8 space-y-3">
-          <div className="h-14 bg-zinc-200 rounded-2xl animate-pulse" />
-        </div>
-        <div className="px-6">
-          <div className="bg-zinc-50 rounded-3xl p-6 space-y-4 border border-zinc-100">
-            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
-            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
-            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-zinc-50">Cargando...</div>;
   if (error || !card) return <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-red-500">{error}</div>;
 
   const hasPremiumFeatures = ownerRole === 'subscription' || ownerRole === 'enterprise' || ownerRole === 'admin';

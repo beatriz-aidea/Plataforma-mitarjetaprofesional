@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { auth } from '../firebase';
 import Logo from '../components/Logo';
 import { QrCode, Smartphone, Building2, CheckCircle2, X, Mail } from 'lucide-react';
 
@@ -17,22 +16,12 @@ export default function Landing() {
   const [authSuccess, setAuthSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  React.useEffect(() => {
-    if (user?.email === 'beatriz@aidea.es') {
-      navigate('/admin');
-    }
-  }, [user, navigate]);
-
   const handleGoogleLogin = async () => {
     try {
       setAuthError('');
       setAuthSuccess('');
       await signInWithGoogle();
-      if (auth.currentUser?.email === 'beatriz@aidea.es') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     } catch (error: any) {
       console.error("Login failed", error);
       if (error.code === 'auth/unauthorized-domain') {
@@ -77,11 +66,7 @@ export default function Landing() {
     try {
       if (isLogin) {
         await signInWithEmail(email, password);
-        if (email === 'beatriz@aidea.es' || auth.currentUser?.email === 'beatriz@aidea.es') {
-          navigate('/admin');
-        } else {
-          navigate('/dashboard');
-        }
+        navigate('/dashboard');
       } else {
         await signUpWithEmail(email, password);
         navigate('/elegir-plan');
@@ -106,11 +91,7 @@ export default function Landing() {
 
   const openAuthModal = () => {
     if (user) {
-      if (user.email === 'beatriz@aidea.es') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     } else {
       setIsResetPassword(false);
       setAuthError('');
@@ -269,11 +250,7 @@ export default function Landing() {
                   navigate('/crear');
                 } else {
                   if (user) {
-                    if (user.email === 'beatriz@aidea.es') {
-                      navigate('/admin');
-                    } else {
-                      navigate('/dashboard');
-                    }
+                    navigate('/dashboard');
                   } else {
                     setIsLogin(false);
                     setShowAuthModal(true);

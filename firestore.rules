@@ -62,7 +62,7 @@ service cloud.firestore {
     
     // Domain Validators
     function isValidUser() {
-      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'updatedAt', 'companyId', 'companyName', 'isAnonymous', 'assignedFields']) &&
+      return hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt', 'updatedAt', 'companyId', 'companyName', 'isAnonymous']) &&
              request.resource.data.uid is string &&
              request.resource.data.email is string &&
              request.resource.data.role in ['free', 'pending', 'subscription', 'enterprise', 'admin', 'company_admin'] &&
@@ -70,8 +70,7 @@ service cloud.firestore {
              (!('updatedAt' in request.resource.data) || request.resource.data.updatedAt is timestamp) &&
              (!('isAnonymous' in request.resource.data) || request.resource.data.isAnonymous is bool) &&
              (!('companyId' in request.resource.data) || request.resource.data.companyId is string) &&
-             (!('companyName' in request.resource.data) || request.resource.data.companyName is string) &&
-             (!('assignedFields' in request.resource.data) || request.resource.data.assignedFields is list);
+             (!('companyName' in request.resource.data) || request.resource.data.companyName is string);
     }
 
     function isValidCard() {
@@ -198,13 +197,6 @@ service cloud.firestore {
       allow create: if isSuperAdmin() && isValidFieldTemplate();
       allow update: if isSuperAdmin() && isValidFieldTemplate();
       allow delete: if isSuperAdmin();
-    }
-
-    match /fieldDefinitions/{fieldId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && 
-        (request.auth.token.email == 'beatriz@aidea.es' || 
-         request.auth.uid == 'IekQHWYb1Ja2S7JB62th04pJkyZ2');
     }
 
     match /notifications/{notificationId} {
