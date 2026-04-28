@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { db, storage } from '../firebase';
+import { db, storage, app } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
 import CardTemplate from '../components/CardTemplate';
 import Logo from '../components/Logo';
@@ -83,7 +84,7 @@ export default function Store() {
   });
   const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true);
   const [shipping, setShipping] = useState({
-    fullName: '', company: '', street: '', city: '', province: '', zip: '', phone: ''
+    fullName: '', company: '', street: '', city: '', province: '', zip: '', country: '', phone: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -93,7 +94,13 @@ export default function Store() {
         ...prev,
         firstName: activeCardData.identity?.firstName || '',
         lastName: activeCardData.identity?.lastName || '',
-        company: activeCardData.identity?.company || ''
+        company: activeCardData.identity?.company || '',
+        street: activeCardData.address?.street || '',
+        zip: activeCardData.address?.zip || '',
+        city: activeCardData.address?.city || '',
+        province: activeCardData.address?.province || '',
+        country: activeCardData.address?.country || '',
+        phone: activeCardData.contact?.mobile || ''
       }));
     }
   };
@@ -186,8 +193,7 @@ export default function Store() {
     return await getDownloadURL(storageRef);
   };
 
-  const handleCheckout = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCheckout = async (paymentMethod: 'card' | 'bizum') => {
     if (!user || !selectedCard) return;
     
     setIsSubmitting(true);
@@ -233,39 +239,53 @@ export default function Store() {
         logoUrl: logoStorageUrl, 
         qrLogoUrl: selectedProduct.isCard ? (qrLogoPreview || '') : '',
         customDesignUrl: customDesignStorageUrl,
-        status: 'paid',
+        status: 'pending',
         billingAddress: billing,
         billingType: billingType,
         shippingAddress: shippingSameAsBilling ? billing : shipping,
         createdAt: serverTimestamp()
       });
       
-      setStep(4); // Success step
+      const functions = getFunctions(app, 'europe-west1');
+      const createRedsysPayment = httpsCallable(functions, 'createRedsysPayment');
+      
+      const { data } = await createRedsysPayment({ 
+        planId: 'store',
+        uid: user.uid,
+        orderId, 
+        amount: selectedProduct.price 
+      }) as { data: { Ds_SignatureVersion: string, Ds_MerchantParameters: string, Ds_Signature: string, redsysUrl: string } };
 
-      try {
-        await emailjs.send(
-          'MitarjetaProfesional',
-          'template_pedido',
-          {
-            name: billing.firstName + ' ' + billing.lastName,
-            client_email: billing.nif,
-            client_phone: billing.phone,
-            product_name: selectedProduct.name,
-            price: selectedProduct.price,
-            design: designMode === 'template' ? selectedDesign.name : 'Diseño personalizado',
-            color: corporateColor,
-            shipping_address: `${billing.street}, ${billing.zip} ${billing.city}, ${billing.province}`,
-          },
-          'Te7HGxULizbdxz0Lr'
-        );
-        console.log('Email enviado correctamente');
-      } catch (emailError) {
-        console.error('Error enviando email:', emailError);
-      }
+      const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature, redsysUrl } = data;
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = redsysUrl;
+
+      const versionInput = document.createElement('input');
+      versionInput.type = 'hidden';
+      versionInput.name = 'Ds_SignatureVersion';
+      versionInput.value = Ds_SignatureVersion;
+      form.appendChild(versionInput);
+
+      const paramsInput = document.createElement('input');
+      paramsInput.type = 'hidden';
+      paramsInput.name = 'Ds_MerchantParameters';
+      paramsInput.value = Ds_MerchantParameters;
+      form.appendChild(paramsInput);
+
+      const signatureInput = document.createElement('input');
+      signatureInput.type = 'hidden';
+      signatureInput.name = 'Ds_Signature';
+      signatureInput.value = Ds_Signature;
+      form.appendChild(signatureInput);
+
+      document.body.appendChild(form);
+      form.submit();
+
     } catch (error) {
       console.error("Error placing order:", error);
-      alert("Error al procesar el pedido.");
-    } finally {
+      alert(error instanceof Error ? error.message : "Error al procesar el pago con Redsys");
       setIsSubmitting(false);
     }
   };
@@ -463,7 +483,9 @@ export default function Store() {
 
                     {selectedProduct.isCard && (
                       <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-3">¿Cómo quieres diseñar tu tarjeta?</label>
+                        <label className="block text-sm font-medium text-zinc-700 mb-3">
+                          ¿Cómo quieres diseñar tu tarjeta?
+                        </label>
                         <div className="flex flex-col gap-3">
                           <button
                             onClick={() => setDesignMode('template')}
@@ -471,10 +493,6 @@ export default function Store() {
                           >
                             <div className="font-semibold text-zinc-900 text-sm">Usar plantilla</div>
                             <div className="text-xs text-zinc-500 mt-0.5">Elige un diseño base con tus datos. El reverso con QR se genera automáticamente.</div>
-                            <div className="flex items-center gap-1 mt-2">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                              <span className="text-[11px] text-emerald-600 font-medium">QR incluido automáticamente</span>
-                            </div>
                           </button>
                           <button
                             onClick={() => { setDesignMode('custom'); setCustomDesignSides('1'); }}
@@ -482,10 +500,6 @@ export default function Store() {
                           >
                             <div className="font-semibold text-zinc-900 text-sm">Mi diseño — 1 cara</div>
                             <div className="text-xs text-zinc-500 mt-0.5">Sube tu diseño para el anverso. El reverso con QR se genera automáticamente.</div>
-                            <div className="flex items-center gap-1 mt-2">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                              <span className="text-[11px] text-emerald-600 font-medium">QR incluido automáticamente</span>
-                            </div>
                           </button>
                           <button
                             onClick={() => { setDesignMode('custom'); setCustomDesignSides('2'); }}
@@ -493,11 +507,20 @@ export default function Store() {
                           >
                             <div className="font-semibold text-zinc-900 text-sm">Mi diseño — 2 caras</div>
                             <div className="text-xs text-zinc-500 mt-0.5">Sube el anverso y el reverso. El QR debe incluirse en tu diseño o lo añadimos nosotros.</div>
-                            <div className="flex items-center gap-1 mt-2">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                              <span className="text-[11px] text-amber-600 font-medium">QR bajo petición — contáctanos</span>
-                            </div>
                           </button>
+                        </div>
+                        <div className="mt-3 p-3 bg-zinc-50 rounded-lg border border-zinc-200">
+                          <p className="text-xs text-zinc-600">
+                            Formato recomendado: PDF con fuentes contorneadas, 
+                            o JPG/PNG a 300 ppp. Incluye 2mm de sangrado.
+                          </p>
+                          <a 
+                            href="/especificaciones-impresion.pdf" 
+                            target="_blank"
+                            className="text-xs text-brand-600 font-medium mt-1 inline-block hover:underline"
+                          >
+                            Ver especificaciones de impresión →
+                          </a>
                         </div>
                       </div>
                     )}
@@ -526,53 +549,55 @@ export default function Store() {
                           </div>
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-2">Elige un diseño base</label>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto p-2 border border-zinc-200 rounded-xl bg-zinc-50">
-                            {DESIGNS.map(design => (
-                              <button
-                                key={design.id}
-                                onClick={() => setSelectedDesign(design)}
-                                className={`relative rounded-xl border-2 text-center transition-all overflow-hidden bg-white ${selectedDesign.id === design.id ? 'border-brand-600 ring-2 ring-brand-600/20' : 'border-zinc-200 hover:border-zinc-300'}`}
-                              >
-                                <div className="w-full aspect-[1.58] relative pointer-events-none overflow-hidden">
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      top: 0,
-                                      left: 0,
-                                      width: '340px',
-                                      height: '215px',
-                                      transformOrigin: 'top left',
-                                      transform: `scale(var(--thumb-scale))`,
-                                    }}
-                                    ref={(el) => {
-                                      if (el) {
-                                        const parent = el.parentElement;
-                                        if (parent) {
-                                          const scale = parent.offsetWidth / 340;
-                                          el.style.setProperty('--thumb-scale', String(scale));
+                        {designMode === 'template' && (
+                          <div>
+                            <label className="block text-sm font-medium text-zinc-700 mb-2">Elige un diseño base</label>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[400px] overflow-y-auto p-2 border border-zinc-200 rounded-xl bg-zinc-50">
+                              {DESIGNS.map(design => (
+                                <button
+                                  key={design.id}
+                                  onClick={() => setSelectedDesign(design)}
+                                  className={`relative rounded-xl border-2 text-center transition-all overflow-hidden bg-white ${selectedDesign.id === design.id ? 'border-brand-600 ring-2 ring-brand-600/20' : 'border-zinc-200 hover:border-zinc-300'}`}
+                                >
+                                  <div className="w-full aspect-[1.58] relative pointer-events-none overflow-hidden">
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '340px',
+                                        height: '215px',
+                                        transformOrigin: 'top left',
+                                        transform: `scale(var(--thumb-scale))`,
+                                      }}
+                                      ref={(el) => {
+                                        if (el) {
+                                          const parent = el.parentElement;
+                                          if (parent) {
+                                            const scale = parent.offsetWidth / 340;
+                                            el.style.setProperty('--thumb-scale', String(scale));
+                                          }
                                         }
-                                      }
-                                    }}
-                                  >
-                                    <CardTemplate
-                                      templateId={design.templateId}
-                                      color={corporateColor}
-                                      logo={selectedFields.logo ? logoPreview : undefined}
-                                      companyLogo={activeCardData?.identity?.companyLogoUrl || null}
-                                      companyLogoSize={activeCardData?.settings?.companyLogoSize || 'M'}
-                                      data={templateData}
-                                    />
+                                      }}
+                                    >
+                                      <CardTemplate
+                                        templateId={design.templateId}
+                                        color={corporateColor}
+                                        logo={selectedFields.logo ? logoPreview : undefined}
+                                        companyLogo={activeCardData?.identity?.companyLogoUrl || null}
+                                        companyLogoSize={activeCardData?.settings?.companyLogoSize || 'M'}
+                                        data={templateData}
+                                      />
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="p-2 border-t border-zinc-100 bg-white relative z-10">
-                                  <div className="text-xs font-medium text-zinc-900">{design.name}</div>
-                                </div>
-                              </button>
-                            ))}
+                                  <div className="p-2 border-t border-zinc-100 bg-white relative z-10">
+                                    <div className="text-xs font-medium text-zinc-900">{design.name}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
 
                         <div>
                           <label className="block text-sm font-medium text-zinc-700 mb-2">Logo Personalizado (Opcional)</label>
@@ -665,8 +690,10 @@ export default function Store() {
                         </div>
 
                         {customDesignSides === '2' && (
-                          <div>
-                            <label className="block text-sm font-medium text-zinc-700 mb-2">Sube el diseño del reverso</label>
+                          <div className="mt-4">
+                            <label className="block text-sm font-medium text-zinc-700 mb-2">
+                              Sube el diseño del reverso
+                            </label>
                             <div className="border-2 border-dashed border-zinc-300 rounded-xl p-8 text-center hover:bg-zinc-50 transition-colors relative">
                               <input
                                 type="file"
@@ -679,14 +706,8 @@ export default function Store() {
                               <p className="text-xs text-zinc-500">Mismas proporciones que el anverso: 85x54mm</p>
                             </div>
                             {customDesignImageBack && (
-                              <p className="text-xs text-emerald-600 mt-2 flex items-center gap-1">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                                Reverso cargado correctamente
-                              </p>
+                              <p className="text-xs text-emerald-600 mt-2">Reverso cargado correctamente</p>
                             )}
-                            <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
-                              <p className="text-xs text-amber-700">Si quieres incluir el QR en tu diseño, contáctanos antes de enviar el pedido para facilitarte el código.</p>
-                            </div>
                           </div>
                         )}
 
@@ -790,7 +811,7 @@ export default function Store() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-zinc-700 mb-1">NIF/CIF</label>
-                          <input required type="text" value={billing.nif} onChange={e => setBilling({...billing, nif: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                          <input type="text" value={billing.nif} onChange={e => setBilling({...billing, nif: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                         </div>
                       </div>
 
@@ -869,9 +890,13 @@ export default function Store() {
                               <input required type="text" value={shipping.province} onChange={e => setShipping({...shipping, province: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                             </div>
                             <div>
-                              <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
-                              <input required type="tel" value={shipping.phone} onChange={e => setShipping({...shipping, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
+                              <label className="block text-sm font-medium text-zinc-700 mb-1">País</label>
+                              <input required type="text" value={shipping.country} onChange={e => setShipping({...shipping, country: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                             </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-zinc-700 mb-1">Teléfono de contacto</label>
+                            <input required type="tel" value={shipping.phone} onChange={e => setShipping({...shipping, phone: e.target.value})} className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none" />
                           </div>
                         </div>
                       )}
@@ -897,7 +922,7 @@ export default function Store() {
                 </h2>
                 
                 {step === 3 && (
-                  <form onSubmit={handleCheckout} className="space-y-6">
+                  <div className="space-y-6">
                     <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 mb-6">
                       <div className="flex justify-between mb-2">
                         <span className="text-zinc-600">{selectedProduct.name}</span>
@@ -914,40 +939,29 @@ export default function Store() {
                       <div className="text-right text-[10px] text-zinc-400 mt-1">IVA NO INCLUIDO</div>
                     </div>
 
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1">Número de Tarjeta (Simulado)</label>
-                        <div className="relative">
-                          <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
-                          <input required type="text" placeholder="0000 0000 0000 0000" className="w-full pl-10 pr-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">Caducidad</label>
-                          <input required type="text" placeholder="MM/AA" className="w-full px-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-700 mb-1">CVC</label>
-                          <input required type="text" placeholder="123" className="w-full px-3 py-3 border border-zinc-300 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-mono" />
-                        </div>
-                      </div>
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => handleCheckout('card')}
+                        disabled={isSubmitting}
+                        className="w-full py-4 bg-zinc-900 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-zinc-800 transition-colors disabled:opacity-50"
+                      >
+                        {isSubmitting ? 'Procesando...' : 'Pagar con tarjeta'}
+                      </button>
+                      <button
+                        onClick={() => handleCheckout('bizum')}
+                        disabled={isSubmitting}
+                        className="w-full py-4 bg-white border-2 border-zinc-200 text-zinc-900 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-zinc-50 transition-colors disabled:opacity-50"
+                      >
+                        {isSubmitting ? 'Procesando...' : 'Pagar con Bizum'}
+                      </button>
                     </div>
 
                     <div className="flex gap-4 pt-4">
                       <button type="button" onClick={() => setStep(2)} className="px-6 py-3 bg-zinc-100 text-zinc-900 rounded-xl font-medium hover:bg-zinc-200 transition-colors">
                         Atrás
                       </button>
-                      <button 
-                        type="submit" 
-                        disabled={isSubmitting}
-                        className="flex-1 py-3 bg-zinc-900 text-white rounded-xl font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50 flex flex-col items-center justify-center gap-0.5"
-                      >
-                        {isSubmitting ? 'Procesando...' : <span>Pagar {Number(selectedProduct.price).toFixed(2)}€</span>}
-                        {!isSubmitting && <span className="text-[10px] font-normal opacity-80 text-center leading-tight">IVA NO INCLUIDO<br/>PORTES INCLUIDOS<br/>ENTREGA 7-10 DÍAS</span>}
-                      </button>
                     </div>
-                  </form>
+                  </div>
                 )}
               </section>
             </div>

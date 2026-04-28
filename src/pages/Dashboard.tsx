@@ -24,6 +24,14 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) return;
 
+    if (userRole === 'admin' || user.email === 'beatriz@aidea.es') {
+      if (!sessionStorage.getItem('adminRedirected')) {
+        sessionStorage.setItem('adminRedirected', 'true');
+        navigate('/admin');
+        return;
+      }
+    }
+
     const fetchCards = async () => {
       try {
         const q = query(collection(db, 'cards'), where('ownerUid', '==', user.uid));
@@ -60,6 +68,7 @@ export default function Dashboard() {
   };
 
   const handleSignOut = async () => {
+    sessionStorage.removeItem('adminRedirected');
     await signOut();
     navigate('/');
   };
@@ -97,7 +106,7 @@ export default function Dashboard() {
           {userRole === 'free' && firstCard && (
             <button onClick={() => navigate('/store')} className="px-6 py-3 bg-zinc-900 text-white font-semibold rounded-xl hover:bg-zinc-800 transition-colors">Pedir tarjeta física</button>
           )}
-          <button onClick={signOut} className="px-6 py-3 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-100 transition-colors">Cerrar sesión</button>
+          <button onClick={handleSignOut} className="px-6 py-3 border border-gray-300 text-gray-600 font-semibold rounded-xl hover:bg-gray-100 transition-colors">Cerrar sesión</button>
         </div>
         <a
           href="https://wa.me/34918826655?text=Hola,%20tengo%20problemas%20de%20acceso%20en%20Mi%20Tarjeta%20Profesional"

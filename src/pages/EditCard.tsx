@@ -180,6 +180,13 @@ export default function EditCard() {
   }, [cardId, user, userRole, navigate]);
 
   const handleChange = (section: string, field: string, value: string) => {
+    if (section === 'social' || (section === 'contact' && field === 'website')) {
+      const lower = value.toLowerCase().trimStart();
+      if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+        return;
+      }
+    }
+
     setFormData(prev => ({
       ...prev,
       [section]: {

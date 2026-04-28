@@ -54,6 +54,7 @@ export default function AdminDashboard() {
   const [companyAdminModal, setCompanyAdminModal] = useState<{ userId: string } | null>(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'enterprises', 'cards', 'products'
+  const [userSearch, setUserSearch] = useState('');
 
   const compressImage = (file: File, callback: (dataUrl: string) => void) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -484,6 +485,12 @@ export default function AdminDashboard() {
     );
   }
 
+  const filteredUsers = users.filter(user =>
+    [user.email, user.role, user.uid, user.companyName]
+      .filter(Boolean)
+      .some(val => val.toLowerCase().includes(userSearch.toLowerCase()))
+  );
+
   if (error) {
     return (
       <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
@@ -598,6 +605,15 @@ export default function AdminDashboard() {
           <div className="px-6 py-4 border-b border-zinc-200 bg-zinc-50">
             <h2 className="font-bold text-lg text-zinc-900">Gestión de Usuarios</h2>
           </div>
+          <div className="px-6 pt-4">
+            <input
+              type="text"
+              placeholder="Buscar usuario..."
+              value={userSearch}
+              onChange={e => setUserSearch(e.target.value)}
+              className="w-full px-4 py-2 border border-zinc-200 rounded-xl text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-brand-600"
+            />
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
@@ -606,12 +622,15 @@ export default function AdminDashboard() {
                   <th className="px-6 py-3 font-medium">Empresa</th>
                   <th className="px-6 py-3 font-medium">Rol</th>
                   <th className="px-6 py-3 font-medium">Tarjetas</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                    Fecha de alta
+                  </th>
                   <th className="px-6 py-3 font-medium">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-100">
                 {/* Registered Users */}
-                {users.map(user => {
+                {filteredUsers.map(user => {
                   const userCards = cards.filter(c => c.ownerUid === user.id);
                   return (
                     <tr key={user.id} className="hover:bg-zinc-50">
@@ -634,6 +653,9 @@ export default function AdminDashboard() {
                         </select>
                       </td>
                       <td className="px-6 py-4 text-zinc-500">{userCards.length} tarjetas</td>
+                      <td className="px-4 py-3 text-sm text-zinc-500">
+                        {user.createdAt?.toDate?.()?.toLocaleDateString('es-ES') || '—'}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
                           <div className="flex gap-1 border-r border-zinc-200 pr-2 mr-2">
@@ -674,6 +696,7 @@ export default function AdminDashboard() {
                       <span className="text-xs font-medium text-zinc-400 italic">Sin cuenta</span>
                     </td>
                     <td className="px-6 py-4 text-zinc-500">1 tarjeta</td>
+                    <td className="px-4 py-3 text-sm text-zinc-500">—</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <button 

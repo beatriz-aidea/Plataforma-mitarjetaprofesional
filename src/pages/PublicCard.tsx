@@ -25,6 +25,7 @@ export default function PublicCard() {
         if (docSnap.exists() && docSnap.data().status === 'active') {
           const cardData = docSnap.data();
           setCard(cardData);
+          setLoading(false);
           
           // Only fetch owner's role if the current visitor is the owner or an admin
           // This prevents permission denied errors for public visitors
@@ -110,7 +111,29 @@ END:VCARD`;
     return `https://${url}`;
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-zinc-50">Cargando...</div>;
+  if (loading) return (
+    <div className="min-h-screen font-sans pb-20 bg-zinc-100">
+      <div className="max-w-md mx-auto min-h-screen shadow-xl bg-white">
+        <div className="h-48 bg-zinc-200 animate-pulse" />
+        <div className="px-6 -mt-20 mb-8 text-center">
+          <div className="w-32 h-32 mx-auto rounded-full bg-zinc-300 animate-pulse mb-4" />
+          <div className="h-6 bg-zinc-200 rounded-full animate-pulse w-48 mx-auto mb-2" />
+          <div className="h-4 bg-zinc-200 rounded-full animate-pulse w-32 mx-auto mb-1" />
+          <div className="h-4 bg-zinc-200 rounded-full animate-pulse w-40 mx-auto" />
+        </div>
+        <div className="px-6 mb-8 space-y-3">
+          <div className="h-14 bg-zinc-200 rounded-2xl animate-pulse" />
+        </div>
+        <div className="px-6">
+          <div className="bg-zinc-50 rounded-3xl p-6 space-y-4 border border-zinc-100">
+            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
+            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
+            <div className="h-10 bg-zinc-200 rounded-xl animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
   if (error || !card) return <div className="min-h-screen flex items-center justify-center bg-zinc-50 text-red-500">{error}</div>;
 
   const hasPremiumFeatures = ownerRole === 'subscription' || ownerRole === 'enterprise' || ownerRole === 'admin';

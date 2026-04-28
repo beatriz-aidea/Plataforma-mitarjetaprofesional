@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Logo from '../components/Logo';
 import { QrCode, Smartphone, Building2, CheckCircle2, X, Mail } from 'lucide-react';
 
 export default function Landing() {
-  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, signInAnon } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, resetPassword, signInAnon, userRole } = useAuth();
   const navigate = useNavigate();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
@@ -15,6 +15,15 @@ export default function Landing() {
   const [authError, setAuthError] = useState('');
   const [authSuccess, setAuthSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user && (userRole === 'admin' || user.email === 'beatriz@aidea.es')) {
+      if (!sessionStorage.getItem('adminRedirected')) {
+        sessionStorage.setItem('adminRedirected', 'true');
+        navigate('/admin');
+      }
+    }
+  }, [user, userRole, navigate]);
 
   const handleGoogleLogin = async () => {
     try {
