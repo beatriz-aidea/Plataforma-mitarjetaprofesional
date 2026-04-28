@@ -115,9 +115,6 @@ export default function Store() {
         setCards(cardsData);
         if (cardsData.length > 0) {
           setSelectedCard(cardsData[0].id);
-          if (cardsData[0].identity?.photoUrl) {
-            setLogoPreview(cardsData[0].identity.photoUrl);
-          }
         }
 
         const productsSnapshot = await getDocs(query(collection(db, 'products'), orderBy('createdAt', 'desc')));

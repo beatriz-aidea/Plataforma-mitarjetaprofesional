@@ -7,6 +7,7 @@ if (admin.apps.length === 0) {
 }
 
 const db = admin.firestore();
+db.settings({ databaseId: 'ai-studio-e8573a2d-567c-4bb1-9792-86cac6762b15' });
 
 function getRedsysSecret(): string {
   const secret = process.env.REDSYS_SECRET_KEY || '';
