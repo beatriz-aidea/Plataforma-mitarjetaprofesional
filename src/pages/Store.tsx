@@ -266,7 +266,16 @@ export default function Store() {
         status: 'pending',
         billingAddress: billing,
         billingType: billingType,
-        shippingAddress: shippingSameAsBilling ? billing : shipping,
+        shippingAddress: shippingSameAsBilling ? {
+          fullName: `${billing.firstName} ${billing.lastName}`.trim(),
+          company: billing.company || '',
+          street: billing.street || '',
+          city: billing.city || '',
+          province: billing.province || '',
+          zip: billing.zip || '',
+          country: billing.country || '',
+          phone: billing.phone || ''
+        } : shipping,
         createdAt: serverTimestamp()
       });
       
@@ -276,13 +285,15 @@ export default function Store() {
       const { data } = await createRedsysPayment({ 
         planId: 'store',
         uid: user.uid,
-        orderId, 
-        amount: selectedProduct.price 
+        orderId,
+        amount: selectedProduct.price
       }) as { data: { Ds_SignatureVersion: string, Ds_MerchantParameters: string, Ds_Signature: string, redsysUrl: string } };
 
       const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature, redsysUrl } = data;
 
-      if (!redsysUrl) throw new Error("Faltan parámetros de Redsys");
+      if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature || !redsysUrl) {
+        throw new Error('Respuesta incompleta de Redsys. Inténtalo de nuevo.');
+      }
 
       const html = `
         <html>
