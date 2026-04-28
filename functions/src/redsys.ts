@@ -231,3 +231,89 @@ export const getVCard = functions.runWith({ invoker: 'public' }).https.onRequest
     res.status(500).send('Error interno');
   }
 });
+
+const { onRequest } = require("firebase-functions/v2/https");
+const { GoogleAuth } = require("google-auth-library");
+const jwt = require("jsonwebtoken");
+
+exports.generateWalletPass = onRequest(
+  { region: "europe-west1", cors: true },
+  async (req: any, res: any) => {
+    try {
+      const { cardId, name, role, company, phone, 
+              email, website, primaryColor } = req.body;
+
+      const issuerId = "3388000000023109651";
+      const classId = `${issuerId}.tarjeta_profesional_digital`;
+      const objectId = `${issuerId}.card_${cardId}`;
+
+      const auth = new GoogleAuth({
+        scopes: "https://www.googleapis.com/auth/wallet_object.issuer"
+      });
+      const client = await auth.getClient();
+      const credentials = await client.getAccessToken();
+
+      const genericObject = {
+        id: objectId,
+        classId: classId,
+        state: "ACTIVE",
+        heroImage: {
+          sourceUri: {
+            uri: "https://mitarjetaprofesional.es/logoQr.svg"
+          }
+        },
+        backgroundColor: primaryColor || "#d60b52",
+        textModulesData: [
+          { header: "Cargo", body: role || "", id: "role" },
+          { header: "Empresa", body: company || "", id: "company" },
+          { header: "Teléfono", body: phone || "", id: "phone" },
+          { header: "Email", body: email || "", id: "email" }
+        ],
+        linksModuleData: {
+          uris: [
+            {
+              uri: `https://mitarjetaprofesional.es/c/${cardId}`,
+              description: "Ver tarjeta completa",
+              id: "card_url"
+            },
+            {
+              uri: `https://mitarjetaprofesional.es/c/${cardId}?download=vcard`,
+              description: "Guardar contacto",
+              id: "vcard_url"
+            }
+          ]
+        },
+        cardTitle: {
+          defaultValue: {
+            language: "es",
+            value: "Mi Tarjeta Profesional"
+          }
+        },
+        header: {
+          defaultValue: {
+            language: "es",
+            value: name || "Tarjeta Profesional"
+          }
+        }
+      };
+
+      const claims = {
+        iss: credentials.client_email,
+        aud: "google",
+        origins: ["https://mitarjetaprofesional.es"],
+        typ: "savetowallet",
+        payload: { genericObjects: [genericObject] }
+      };
+
+      const token = jwt.sign(claims, credentials.private_key, 
+        { algorithm: "RS256" });
+
+      const saveUrl = `https://pay.google.com/gp/v/save/${token}`;
+      res.json({ url: saveUrl });
+
+    } catch (error: any) {
+      console.error("Error generating wallet pass:", error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);

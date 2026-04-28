@@ -131,7 +131,7 @@ export default function Store() {
       }
     };
     fetchData();
-  }, [user]);
+  }, [user?.uid]);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -202,25 +202,49 @@ export default function Store() {
       let logoStorageUrl = '';
 
       if (designMode === 'custom' && customDesignImage) {
-        customDesignStorageUrl = await uploadFileToStorage(
-          customDesignImage,
-          `orders/${user.uid}/${Date.now()}_design`
-        );
+        if (customDesignImage.startsWith('http')) {
+          customDesignStorageUrl = customDesignImage;
+        } else {
+          try {
+            customDesignStorageUrl = await uploadFileToStorage(
+              customDesignImage,
+              `orders/${user.uid}/${Date.now()}_design`
+            );
+          } catch (e) {
+            customDesignStorageUrl = '';
+          }
+        }
       }
 
       let customDesignBackStorageUrl = '';
       if (customDesignSides === '2' && customDesignImageBack) {
-        customDesignBackStorageUrl = await uploadFileToStorage(
-          customDesignImageBack,
-          `orders/${user.uid}/${Date.now()}_design_back`
-        );
+        if (customDesignImageBack.startsWith('http')) {
+          customDesignBackStorageUrl = customDesignImageBack;
+        } else {
+          try {
+            customDesignBackStorageUrl = await uploadFileToStorage(
+              customDesignImageBack,
+              `orders/${user.uid}/${Date.now()}_design_back`
+            );
+          } catch (e) {
+            customDesignBackStorageUrl = '';
+          }
+        }
       }
 
       if (logoPreview) {
-        logoStorageUrl = await uploadFileToStorage(
-          logoPreview,
-          `orders/${user.uid}/${Date.now()}_logo`
-        );
+        if (logoPreview.startsWith('http')) {
+          logoStorageUrl = logoPreview;
+        } else {
+          try {
+            logoStorageUrl = await uploadFileToStorage(
+              logoPreview,
+              `orders/${user.uid}/${Date.now()}_logo`
+            );
+          } catch (e) {
+            logoStorageUrl = '';
+          }
+        }
       }
 
       const orderId = crypto.randomUUID();
@@ -246,7 +270,7 @@ export default function Store() {
         createdAt: serverTimestamp()
       });
       
-      const functions = getFunctions(app, 'europe-west1');
+      const functions = getFunctions(app);
       const createRedsysPayment = httpsCallable(functions, 'createRedsysPayment');
       
       const { data } = await createRedsysPayment({ 
@@ -258,30 +282,23 @@ export default function Store() {
 
       const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature, redsysUrl } = data;
 
-      const form = document.createElement('form');
-      form.method = 'POST';
-      form.action = redsysUrl;
+      if (!redsysUrl) throw new Error("Faltan parámetros de Redsys");
 
-      const versionInput = document.createElement('input');
-      versionInput.type = 'hidden';
-      versionInput.name = 'Ds_SignatureVersion';
-      versionInput.value = Ds_SignatureVersion;
-      form.appendChild(versionInput);
-
-      const paramsInput = document.createElement('input');
-      paramsInput.type = 'hidden';
-      paramsInput.name = 'Ds_MerchantParameters';
-      paramsInput.value = Ds_MerchantParameters;
-      form.appendChild(paramsInput);
-
-      const signatureInput = document.createElement('input');
-      signatureInput.type = 'hidden';
-      signatureInput.name = 'Ds_Signature';
-      signatureInput.value = Ds_Signature;
-      form.appendChild(signatureInput);
-
-      document.body.appendChild(form);
-      form.submit();
+      const html = `
+        <html>
+          <body>
+            <form id="redsysForm" method="POST" action="${redsysUrl}">
+              <input type="hidden" name="Ds_SignatureVersion" value="${Ds_SignatureVersion}"/>
+              <input type="hidden" name="Ds_MerchantParameters" value="${Ds_MerchantParameters}"/>
+              <input type="hidden" name="Ds_Signature" value="${Ds_Signature}"/>
+            </form>
+            <script>document.getElementById('redsysForm').submit();</script>
+          </body>
+        </html>
+      `;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.location.href = url;
 
     } catch (error) {
       console.error("Error placing order:", error);

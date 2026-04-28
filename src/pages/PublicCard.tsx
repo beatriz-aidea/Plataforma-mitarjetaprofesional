@@ -99,8 +99,27 @@ END:VCARD`;
     }
   };
 
-  const handleAddToWallet = () => {
-    alert('Funcionalidad de Wallet en desarrollo. Próximamente podrás descargar tu pase para Apple Wallet y Google Wallet.');
+  const handleAddToWallet = async () => {
+    if (!card) return;
+    try {
+      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const functions = getFunctions(undefined, 'europe-west1');
+      const generateWalletPass = httpsCallable(functions, 'generateWalletPass');
+      const { data } = await generateWalletPass({
+        cardId: card.id,
+        name: `${card.identity?.firstName || ''} ${card.identity?.lastName || ''}`.trim(),
+        role: card.identity?.role || '',
+        company: card.identity?.company || '',
+        phone: card.contact?.mobile || '',
+        email: card.contact?.email || '',
+        website: card.contact?.website || '',
+        primaryColor: card.settings?.primaryColor || '#d60b52'
+      }) as { data: { url: string } };
+      window.open(data.url, '_blank');
+    } catch (error) {
+      console.error('Error al generar pase de Wallet:', error);
+      alert('Error al generar el pase. Inténtalo de nuevo.');
+    }
   };
 
   const formatUrl = (url: string) => {

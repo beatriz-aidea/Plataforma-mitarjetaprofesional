@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, setDoc, addDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import Logo from '../components/Logo';
-import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode, Ban } from 'lucide-react';
+import { Users, CreditCard, ShoppingBag, ShieldAlert, Edit2, ExternalLink, Trash2, Plus, Smartphone, QrCode, Ban, LayoutList } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -55,6 +55,146 @@ export default function AdminDashboard() {
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [activeTab, setActiveTab] = useState('users'); // 'users', 'enterprises', 'cards', 'products'
   const [userSearch, setUserSearch] = useState('');
+
+  // ---------- FUNCIONALIDAD A ----------
+  const [fieldDefinitions, setFieldDefinitions] = useState<any[]>([]);
+  const [showFieldForm, setShowFieldForm] = useState(false);
+  const [fieldToDelete, setFieldToDelete] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<any | null>(null);
+  const [newCatalogField, setNewCatalogField] = useState({ type: 'preset', label: '', icon: 'link', placeholder: '' });
+
+  useEffect(() => {
+    const fetchFieldDefs = async () => {
+      if (!auth.currentUser) return;
+      try {
+        const q = query(collection(db, 'fieldDefinitions'), orderBy('createdAt', 'asc'));
+        const snapshot = await getDocs(q);
+        setFieldDefinitions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error('Error fetching fieldDefinitions', err);
+      }
+    };
+    fetchFieldDefs();
+  }, [auth.currentUser]); // Re-run if auth changes to ensure data is fetched
+
+  // ---------- FUNCIONALIDAD B ----------
+  const [managingFieldsFor, setManagingFieldsFor] = useState<{ id: string, type: 'user'|'company', email?: string, name?: string } | null>(null);
+  const [fieldAssignments, setFieldAssignments] = useState<{ [fieldId: string]: boolean }>({});
+
+  const loadAssignedFields = async (id: string, type: 'user'|'company', extra: { email?: string, name?: string }) => {
+    try {
+      const docSnap = await getDoc(doc(db, type === 'user' ? 'users' : 'companies', id));
+      const data = docSnap.data();
+      const assigned: any[] = data?.assignedFields || [];
+      const newAssignments: { [fieldId: string]: boolean } = {};
+      assigned.forEach(item => {
+        if (item && item.id) {
+          newAssignments[item.id] = true;
+        }
+      });
+      setFieldAssignments(newAssignments);
+      setManagingFieldsFor({ id, type, ...extra });
+    } catch (err) {
+      console.error('Error loading fields', err);
+    }
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!managingFieldsFor) return;
+    try {
+      const collectionName = managingFieldsFor.type === 'user' ? 'users' : 'companies';
+      const docRef = doc(db, collectionName, managingFieldsFor.id);
+      const docSnap = await getDoc(docRef);
+      const existingAssigned: any[] = docSnap.data()?.assignedFields || [];
+      
+      const newAssignedArray: any[] = [];
+      Object.keys(fieldAssignments).forEach(fieldId => {
+        if (fieldAssignments[fieldId]) {
+          const existing = existingAssigned.find(f => f.id === fieldId);
+          if (existing) {
+            newAssignedArray.push(existing);
+          } else {
+            newAssignedArray.push({ id: fieldId, value: "" });
+          }
+        }
+      });
+      
+      await updateDoc(docRef, { assignedFields: newAssignedArray });
+      alert("Campos guardados correctamente");
+      setManagingFieldsFor(null);
+    } catch (err) {
+      console.error('Error saving assignments', err);
+      alert('Error al guardar asignaciones');
+    }
+  };
+
+  const reloadFieldDefs = async () => {
+    try {
+      const q = query(collection(db, 'fieldDefinitions'), orderBy('createdAt', 'asc'));
+      const snapshot = await getDocs(q);
+      setFieldDefinitions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch(err) {}
+  };
+
+  const handleSaveCatalogField = async () => {
+    if (!newCatalogField.label.trim()) {
+      alert('El nombre del campo no puede estar vacío');
+      return;
+    }
+    try {
+      const inputType = newCatalogField.type === 'custom_date' ? 'date' : newCatalogField.type === 'custom_url' ? 'url' : 'text';
+      const dataToSave = {
+        type: newCatalogField.type,
+        label: newCatalogField.label,
+        icon: newCatalogField.icon,
+        placeholder: newCatalogField.type === 'preset' ? newCatalogField.placeholder : '',
+        inputType
+      };
+      
+      if (editingField) {
+        await updateDoc(doc(db, 'fieldDefinitions', editingField.id), dataToSave);
+      } else {
+        await addDoc(collection(db, 'fieldDefinitions'), {
+          ...dataToSave,
+          createdAt: serverTimestamp()
+        });
+      }
+      
+      await reloadFieldDefs();
+      setNewCatalogField({ type: 'preset', label: '', icon: 'link', placeholder: '' });
+      setEditingField(null);
+      setShowFieldForm(false);
+    } catch (err) {
+      console.error('Error saving field', err);
+    }
+  };
+
+  const executeDeleteCatalogField = async () => {
+    if (!fieldToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'fieldDefinitions', fieldToDelete));
+      await reloadFieldDefs();
+      setFieldToDelete(null);
+    } catch (err) {
+      console.error('Error deleting field', err);
+    }
+  };
+
+  const handleDuplicateField = async (field: any) => {
+    try {
+      await addDoc(collection(db, 'fieldDefinitions'), {
+        type: field.type,
+        label: `${field.label} (copia)`,
+        icon: field.icon,
+        placeholder: field.placeholder,
+        inputType: field.inputType,
+        createdAt: serverTimestamp()
+      });
+      await reloadFieldDefs();
+    } catch (err) {
+      console.error('Error duplicating field', err);
+    }
+  };
 
   const compressImage = (file: File, callback: (dataUrl: string) => void) => {
     if (file.size > 5 * 1024 * 1024) {
@@ -672,6 +812,13 @@ export default function AdminDashboard() {
                             ))}
                           </div>
                           <button
+                            onClick={() => loadAssignedFields(user.id, 'user', { email: user.email })}
+                            className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Gestionar campos"
+                          >
+                            <LayoutList className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => confirmDelete('user', user.id)}
                             className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Eliminar usuario"
@@ -795,6 +942,13 @@ export default function AdminDashboard() {
                             title="Eliminar empresa"
                           >
                             <Trash2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => loadAssignedFields(company.id, 'company', { name: company.name })}
+                            className="p-1.5 text-zinc-400 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Gestionar campos"
+                          >
+                            <LayoutList className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -1010,6 +1164,211 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* PANEL FUNCIONALIDAD B */}
+        {managingFieldsFor && (
+          <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="font-bold text-lg text-zinc-900">
+                Campos asignados a {managingFieldsFor.email || managingFieldsFor.name}
+              </h2>
+              <button onClick={() => setManagingFieldsFor(null)} className="text-zinc-400 hover:text-zinc-600">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 mb-6 max-h-64 overflow-y-auto pr-2">
+              {fieldDefinitions.length === 0 ? (
+                <p className="text-sm text-zinc-500">No hay campos en el catálogo.</p>
+              ) : (
+                fieldDefinitions.map(field => (
+                  <label key={field.id} className="flex items-center gap-3 p-3 border border-zinc-200 rounded-lg cursor-pointer hover:bg-zinc-50">
+                    <input 
+                      type="checkbox" 
+                      className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4"
+                      checked={!!fieldAssignments[field.id]}
+                      onChange={e => setFieldAssignments({...fieldAssignments, [field.id]: e.target.checked})}
+                    />
+                    <div className="flex justify-between items-center w-full">
+                      <span className="font-medium text-sm text-zinc-700">{field.label}</span>
+                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                          field.type === 'preset' ? 'bg-blue-100 text-blue-700' :
+                          field.type === 'custom_url' ? 'bg-purple-100 text-purple-700' :
+                          'bg-orange-100 text-orange-700'
+                        }`}>
+                        {field.type === 'preset' ? 'Predefinido' : field.type === 'custom_url' ? 'URL' : 'Fecha'}
+                      </span>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setManagingFieldsFor(null)} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg">Cerrar</button>
+              <button onClick={handleSaveAssignments} className="px-4 py-2 text-sm font-medium bg-brand-600 text-white rounded-lg hover:bg-brand-700">Guardar asignación</button>
+            </div>
+          </div>
+        )}
+
+        {/* FUNCIONALIDAD A */}
+        <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden mb-8 p-6">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <h2 className="font-bold text-lg text-zinc-900">Campos Personalizados</h2>
+              <p className="text-sm text-zinc-500">Crea el catálogo de campos adicionales que podrás asignar a usuarios y empresas</p>
+            </div>
+            <button 
+              onClick={() => {
+                setEditingField(null);
+                setNewCatalogField({ type: 'preset', label: '', icon: 'link', placeholder: '' });
+                setShowFieldForm(true);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 transition-colors font-medium text-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Nuevo campo
+            </button>
+          </div>
+
+          {showFieldForm && (
+            <div className="mt-6 p-4 border border-zinc-200 rounded-xl bg-zinc-50 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Tipo de campo</label>
+                  <select 
+                    value={newCatalogField.type}
+                    onChange={e => setNewCatalogField({...newCatalogField, type: e.target.value})}
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                  >
+                    <option value="preset">Campo predefinido</option>
+                    <option value="custom_url">Enlace URL personalizado</option>
+                    <option value="custom_date">Campo de fecha</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-700 mb-1">Nombre del campo</label>
+                  <input 
+                    type="text"
+                    value={newCatalogField.label}
+                    onChange={e => setNewCatalogField({...newCatalogField, label: e.target.value})}
+                    placeholder={
+                      newCatalogField.type === 'custom_date' ? 'Ej: Fecha de alta, Cumpleaños...' :
+                      newCatalogField.type === 'custom_url' ? 'Ej: Mi catálogo, Reservar cita...' :
+                      'Ej: WhatsApp, Teléfono directo...'
+                    }
+                    className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                  />
+                </div>
+                {newCatalogField.type !== 'custom_date' && (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Icono</label>
+                    <select 
+                      value={newCatalogField.icon}
+                      onChange={e => setNewCatalogField({...newCatalogField, icon: e.target.value})}
+                      className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                    >
+                      <option value="link">Enlace web</option>
+                      <option value="file">Documento PDF</option>
+                      <option value="video">Video</option>
+                      <option value="calendar">Agenda / Reservas</option>
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="map">Ubicacion</option>
+                      <option value="phone">Telefono directo</option>
+                    </select>
+                  </div>
+                )}
+                {newCatalogField.type === 'preset' && (
+                  <div>
+                    <label className="block text-sm font-medium text-zinc-700 mb-1">Placeholder</label>
+                    <input 
+                      type="text"
+                      value={newCatalogField.placeholder}
+                      onChange={e => setNewCatalogField({...newCatalogField, placeholder: e.target.value})}
+                      placeholder="Ej: https://wa.me/+34..."
+                      className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-brand-500 outline-none text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setShowFieldForm(false)} className="px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-100 rounded-lg">Cancelar</button>
+                <button onClick={handleSaveCatalogField} className="px-4 py-2 text-sm font-medium bg-zinc-900 text-white rounded-lg hover:bg-zinc-800">Guardar campo</button>
+              </div>
+            </div>
+          )}
+
+          {fieldToDelete && (
+            <div className="mb-4 p-4 bg-red-50 text-red-800 border border-red-200 rounded-lg flex items-center justify-between">
+              <span className="text-sm font-medium">¿Eliminar el campo? Esta acción no se puede deshacer.</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setFieldToDelete(null)} className="px-3 py-1.5 text-xs font-medium bg-white text-zinc-700 border border-gray-300 rounded hover:bg-gray-50">Cancelar</button>
+                <button onClick={executeDeleteCatalogField} className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700">Sí, eliminar</button>
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-x-auto mt-6">
+            <table className="w-full text-left text-sm whitespace-nowrap">
+              <thead className="bg-zinc-50 border-y border-zinc-200 text-zinc-500">
+                <tr>
+                  <th className="px-4 py-3 font-medium w-16">Icono</th>
+                  <th className="px-4 py-3 font-medium">Nombre</th>
+                  <th className="px-4 py-3 font-medium">Tipo</th>
+                  <th className="px-4 py-3 font-medium">Placeholder</th>
+                  <th className="px-4 py-3 font-medium">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {fieldDefinitions.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">No hay campos creados</td>
+                  </tr>
+                ) : (
+                  fieldDefinitions.map(field => (
+                    <tr key={field.id} className="hover:bg-zinc-50">
+                      <td className="px-4 py-3 text-zinc-400 capitalize">{field.type !== 'custom_date' ? field.icon : '-'}</td>
+                      <td className="px-4 py-3 font-medium text-zinc-900">{field.label}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                          field.type === 'preset' ? 'bg-blue-100 text-blue-700' :
+                          field.type === 'custom_url' ? 'bg-purple-100 text-purple-700' :
+                          'bg-orange-100 text-orange-700'
+                        }`}>
+                          {field.type === 'preset' ? 'Predefinido' : field.type === 'custom_url' ? 'URL' : 'Fecha'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-zinc-500 text-xs">{field.placeholder || '-'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { 
+                              setEditingField(field); 
+                              setNewCatalogField({
+                                type: field.type, label: field.label, icon: field.icon || 'link', placeholder: field.placeholder || ''
+                              });
+                              setShowFieldForm(true);
+                            }}
+                            className="p-1.5 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Editar"
+                          ><Edit2 className="w-4 h-4"/></button>
+                          <button
+                            onClick={() => handleDuplicateField(field)}
+                            className="p-1.5 text-zinc-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors"
+                            title="Duplicar"
+                          >📋</button>
+                          <button
+                            onClick={() => setFieldToDelete(field.id)}
+                            className="p-1.5 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar"
+                          ><Trash2 className="w-4 h-4"/></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
       </main>
 

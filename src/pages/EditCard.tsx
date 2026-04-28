@@ -43,6 +43,14 @@ export default function EditCard() {
     status: 'active'
   });
 
+  const [customFields, setCustomFields] = useState<Array<{
+    fieldId: string,
+    label: string, 
+    type: string,
+    icon: string,
+    value: string
+  }>>([]);
+
   useEffect(() => {
     const fetchCard = async () => {
       if (!user) {
@@ -52,6 +60,43 @@ export default function EditCard() {
 
       const isAdminUser = userRole === 'admin';
       setIsAdmin(isAdminUser);
+
+      const loadAssignedFields = async (targetUid: string) => {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', targetUid));
+          const assigned = userDoc.exists() ? userDoc.data().assignedFields || [] : [];
+          if (companyId) {
+            const compDoc = await getDoc(doc(db, 'companies', companyId));
+            const compAssigned = compDoc.exists() ? compDoc.data().assignedFields || [] : [];
+            const userFieldIds = new Set(assigned.map((a: any) => a.id || a.fieldId));
+            compAssigned.forEach((c: any) => {
+              if (!userFieldIds.has(c.id || c.fieldId)) {
+                 assigned.push(c);
+              }
+            });
+          }
+          const finalCustomFields: any[] = [];
+          for (const item of assigned) {
+             const fId = item.id || item.fieldId;
+             if (!fId) continue;
+             const defDoc = await getDoc(doc(db, 'fieldDefinitions', fId));
+             if (defDoc.exists()) {
+               const defData = defDoc.data();
+               finalCustomFields.push({
+                 fieldId: fId,
+                 label: defData.label,
+                 type: defData.type,
+                 icon: defData.icon,
+                 value: item.value || '',
+                 placeholder: defData.placeholder || ''
+               });
+             }
+          }
+          setCustomFields(finalCustomFields);
+        } catch (err) {
+          console.error("Error loading assigned fields", err);
+        }
+      };
 
       try {
         // Fetch available custom fields
@@ -90,6 +135,7 @@ export default function EditCard() {
               customFields: companyDataFromDb.customFields || [],
             }));
           }
+          await loadAssignedFields(user.uid);
           setInitialLoading(false);
           return;
         }
@@ -164,6 +210,7 @@ export default function EditCard() {
               },
               status: data.status || 'active'
             });
+            await loadAssignedFields(data.ownerUid);
           } else {
             navigate(isAdminUser ? '/admin' : (userRole === 'company_admin' ? '/empresa' : '/dashboard'));
           }
@@ -338,6 +385,14 @@ export default function EditCard() {
         }).catch(err => console.warn("Could not update user company", err));
       }
 
+      await updateDoc(doc(db, 'users', payload.ownerUid), {
+        assignedFields: customFields.map(f => ({
+          fieldId: f.fieldId,
+          id: f.fieldId,
+          value: f.value
+        }))
+      }).catch(err => console.warn("Could not save assigned fields", err));
+
       navigate(targetPath || `/success/${encodeURIComponent(id)}`);
     } catch (error) {
       console.error("Error saving card", error);
@@ -487,25 +542,7 @@ export default function EditCard() {
                         </label>
                       </div>
                     </div>
-                    <div className="mt-3">
-                      <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Tamaño del logotipo</label>
-                      <div className="flex gap-2">
-                        {(['S', 'M', 'L'] as const).map(size => (
-                          <button
-                            key={size}
-                            type="button"
-                            onClick={() => handleChange('settings', 'companyLogoSize', size)}
-                            className={`flex-1 py-2 rounded-xl border-2 font-bold text-sm transition-colors ${
-                              formData.settings.companyLogoSize === size
-                                ? 'border-brand-600 bg-brand-50 text-brand-700'
-                                : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'
-                            }`}
-                          >
-                            {size}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+
                   </div>
               )}
             </div>
@@ -789,6 +826,33 @@ export default function EditCard() {
               )}
             </div>
           </section>
+
+          {customFields.length > 0 && (
+            <section className="bg-white p-8 rounded-[2rem] border border-zinc-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-8">
+                <Plus className="w-6 h-6 text-brand-600" />
+                <h2 className="text-2xl font-bold text-zinc-900">Información adicional</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {customFields.map((field, i) => (
+                  <div key={field.fieldId}>
+                    <label className="block text-sm font-bold text-zinc-900 mb-2">{field.label}</label>
+                    <input 
+                      type={field.type === 'custom_date' ? 'date' : 'text'} 
+                      value={field.value} 
+                      onChange={e => {
+                        const newFields = [...customFields];
+                        newFields[i].value = e.target.value;
+                        setCustomFields(newFields);
+                      }}
+                      placeholder={field.type === 'custom_url' ? 'https://...' : (field.type === 'preset' ? (field as any).placeholder : '')}
+                      className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:bg-white outline-none transition-all"
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
           
           <div className="flex justify-end mb-8">
             <button
