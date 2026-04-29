@@ -5,7 +5,10 @@ if (admin.apps.length === 0) {
   admin.initializeApp();
 }
 
-const db = admin.firestore();
+const { Firestore } = require('@google-cloud/firestore');
+const db = new Firestore({
+  databaseId: 'ai-studio-e8573a2d-567c-4bb1-9792-86cac6762b15'
+});
 
 export const getVCard = functions.runWith({ invoker: 'public' }).https.onRequest(async (req, res) => {
   const cardId = req.path.replace('/', '').trim();
