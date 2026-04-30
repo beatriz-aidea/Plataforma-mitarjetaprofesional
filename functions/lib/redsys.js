@@ -1,0 +1,219 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.redsysNotification = exports.createRedsysPayment = void 0;
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+const crypto = require("crypto");
+if (admin.apps.length === 0) {
+    admin.initializeApp();
+}
+const { Firestore } = require('@google-cloud/firestore');
+const db = new Firestore({
+    databaseId: 'ai-studio-e8573a2d-567c-4bb1-9792-86cac6762b15'
+});
+function getRedsysSecret() {
+    const secret = process.env.REDSYS_SECRET_KEY || '';
+    if (!secret) {
+        throw new Error('REDSYS_SECRET_KEY no está configurada. Detener ejecución.');
+    }
+    return secret;
+}
+function getOrderKey(order, secret) {
+    const key = Buffer.from(secret, 'base64');
+    const iv = Buffer.alloc(8, 0);
+    const cipher = crypto.createCipheriv('des-ede3-cbc', key, iv);
+    cipher.setAutoPadding(false);
+    let paddedOrder = order;
+    while (paddedOrder.length % 8 !== 0)
+        paddedOrder += '\0';
+    return Buffer.concat([cipher.update(paddedOrder, 'utf8'), cipher.final()]);
+}
+function generateSafeOrder() {
+    const ts = Date.now().toString().slice(-6);
+    const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return (ts + rand).substring(0, 12);
+}
+exports.createRedsysPayment = functions.https.onRequest(async (req, res) => {
+    // CORS
+    res.set('Access-Control-Allow-Origin', 'https://mitarjetaprofesional.es');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+    if (req.method !== 'POST') {
+        res.status(405).send('Method Not Allowed');
+        return;
+    }
+    try {
+        const { planId, uid, amount } = req.body;
+        if (!uid) {
+            res.status(401).json({ error: 'Usuario no autenticado.' });
+            return;
+        }
+        const REDSYS_SECRET_KEY = getRedsysSecret();
+        const planPrices = {
+            standard: '2178',
+            premium: '3630',
+            enterprise: '0'
+        };
+        let amountStr;
+        if (planId === 'store') {
+            if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                res.status(400).json({ error: 'Importe no válido para pedido de tienda.' });
+                return;
+            }
+            amountStr = Math.round(Number(amount) * 100).toString();
+        }
+        else {
+            amountStr = planPrices[planId];
+            if (!amountStr) {
+                res.status(400).json({ error: 'Plan no válido.' });
+                return;
+            }
+        }
+        const order = generateSafeOrder();
+        const params = {
+            Ds_Merchant_MerchantCode: "369433412",
+            Ds_Merchant_Terminal: "1",
+            Ds_Merchant_Currency: "978",
+            Ds_Merchant_TransactionType: "0",
+            Ds_Merchant_Amount: amountStr,
+            Ds_Merchant_Order: order,
+            Ds_Merchant_MerchantURL: "https://redsysnotification-xdvnwns5xq-uc.a.run.app",
+            Ds_Merchant_UrlOK: "https://mitarjetaprofesional.es/dashboard?payment=success",
+            Ds_Merchant_UrlKO: "https://mitarjetaprofesional.es/pricing?payment=cancelled",
+            Ds_Merchant_MerchantName: "Mi Tarjeta Profesional"
+        };
+        const Ds_MerchantParameters = Buffer.from(JSON.stringify(params)).toString('base64');
+        const orderKey = getOrderKey(order, REDSYS_SECRET_KEY);
+        const Ds_Signature = crypto.createHmac('sha256', orderKey).update(Ds_MerchantParameters).digest('base64');
+        await db.collection('transactions').doc(order).set({
+            transactionId: order,
+            uid,
+            plan: planId,
+            amount: parseInt(amountStr, 10),
+            status: 'PENDING',
+            createdAt: admin.firestore.Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now()
+        });
+        res.status(200).json({
+            Ds_SignatureVersion: "HMAC_SHA256_V1",
+            Ds_MerchantParameters,
+            Ds_Signature,
+            redsysUrl: "https://sis-t.redsys.es:25443/sis/realizarPago"
+        });
+    }
+    catch (error) {
+        console.error('Error en createRedsysPayment:', error);
+        res.status(500).json({ error: error.message || 'Error interno' });
+    }
+});
+exports.redsysNotification = functions.https.onRequest(async (req, res) => {
+    const { Ds_MerchantParameters, Ds_Signature } = req.body;
+    if (!Ds_MerchantParameters || !Ds_Signature) {
+        res.status(200).send('OK');
+        return;
+    }
+    try {
+        const REDSYS_SECRET_KEY = getRedsysSecret();
+        const base64Safe = Ds_MerchantParameters.replace(/-/g, '+').replace(/_/g, '/');
+        const decodedParamsStr = Buffer.from(base64Safe, 'base64').toString('utf8');
+        const decodedParams = JSON.parse(decodedParamsStr);
+        const getParam = (key) => {
+            const foundKey = Object.keys(decodedParams).find(k => k.toLowerCase() === key.toLowerCase());
+            return foundKey ? decodedParams[foundKey] : undefined;
+        };
+        const dsOrder = getParam('ds_order');
+        if (!dsOrder) {
+            res.status(200).send('OK');
+            return;
+        }
+        const orderKey = getOrderKey(dsOrder, REDSYS_SECRET_KEY);
+        const calculatedSignature = crypto.createHmac('sha256', orderKey).update(Ds_MerchantParameters).digest('base64');
+        const expectedSafe = calculatedSignature.replace(/-/g, '+').replace(/_/g, '/');
+        const receivedSafe = Ds_Signature.replace(/-/g, '+').replace(/_/g, '/');
+        if (expectedSafe !== receivedSafe) {
+            console.error('Firma Redsys inválida para orden:', dsOrder);
+            res.status(200).send('OK');
+            return;
+        }
+        // Responder 200 inmediatamente antes de procesar
+        res.status(200).send('OK');
+        const transactionRef = db.collection('transactions').doc(dsOrder);
+        const transactionSnap = await transactionRef.get();
+        // IDEMPOTENCIA: si ya está procesado, no hacer nada
+        if (transactionSnap.exists && transactionSnap.data()?.status === 'SUCCESS') {
+            console.log('Orden ya procesada, ignorando:', dsOrder);
+            return;
+        }
+        const dsResponse = getParam('ds_response');
+        const responseCode = parseInt(dsResponse, 10);
+        if (responseCode >= 0 && responseCode <= 99) {
+            // Pago autorizado
+            if (!transactionSnap.exists) {
+                console.error('No se encontró la transacción en Firestore:', dsOrder);
+                return;
+            }
+            const { uid, plan } = transactionSnap.data();
+            const dsAmount = getParam('ds_amount');
+            const totalAmount = parseInt(dsAmount, 10) / 100;
+            const now = admin.firestore.Timestamp.now();
+            const oneYearLater = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000));
+            // Mapear plan a role
+            const planToRole = {
+                standard: 'subscription',
+                premium: 'subscription',
+                enterprise: 'enterprise'
+            };
+            const newRole = planToRole[plan] || 'subscription';
+            // Actualizar transacción
+            await transactionRef.update({
+                status: 'SUCCESS',
+                updatedAt: now
+            });
+            // Actualizar usuario: role + datos de suscripción
+            await db.collection('users').doc(uid).update({
+                role: newRole,
+                subscriptionTier: plan,
+                subscriptionStatus: 'active',
+                paymentProvider: 'redsys',
+                subscriptionStart: now,
+                subscriptionEnd: oneYearLater
+            });
+            // Crear factura
+            await db.collection('invoices').add({
+                uid,
+                transactionId: dsOrder,
+                amount: parseFloat((totalAmount / 1.21).toFixed(2)),
+                iva: 21,
+                total: totalAmount,
+                plan,
+                provider: 'redsys',
+                status: 'paid',
+                createdAt: now
+            });
+            // Notificación interna
+            await db.collection('mail').add({
+                to: 'info@aidea.es',
+                message: {
+                    subject: `Nueva suscripción ${plan}`,
+                    text: `Pago confirmado.\nUID: ${uid}\nPlan: ${plan}\nTotal: ${totalAmount}€\nOrden: ${dsOrder}`
+                }
+            });
+        }
+        else {
+            // Pago denegado
+            await transactionRef.update({
+                status: 'FAILED',
+                responseCode,
+                updatedAt: admin.firestore.Timestamp.now()
+            });
+        }
+    }
+    catch (error) {
+        console.error('Error en redsysNotification:', error);
+    }
+});
+//# sourceMappingURL=redsys.js.map

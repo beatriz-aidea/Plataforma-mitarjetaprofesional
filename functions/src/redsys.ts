@@ -35,70 +35,86 @@ function generateSafeOrder(): string {
   return (ts + rand).substring(0, 12);
 }
 
-export const createRedsysPayment = functions.https.onCall(async (data, context) => {
-  const { planId, uid, amount } = data;
+export const createRedsysPayment = functions.https.onRequest(async (req, res) => {
+  // CORS
+  res.set('Access-Control-Allow-Origin', 'https://mitarjetaprofesional.es');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  if (req.method !== 'POST') { res.status(405).send('Method Not Allowed'); return; }
 
-  if (!uid) {
-    throw new functions.https.HttpsError('unauthenticated', 'Usuario no autenticado.');
-  }
+  try {
+    const { planId, uid, amount } = req.body;
 
-  const REDSYS_SECRET_KEY = getRedsysSecret();
-
-  const planPrices: Record<string, string> = {
-    standard: '2178',
-    premium: '3630',
-    enterprise: '0'
-  };
-
-  let amountStr: string;
-
-  if (planId === 'store') {
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-      throw new functions.https.HttpsError('invalid-argument', 'Importe no válido para pedido de tienda.');
+    if (!uid) {
+      res.status(401).json({ error: 'Usuario no autenticado.' });
+      return;
     }
-    amountStr = Math.round(Number(amount) * 100).toString();
-  } else {
-    amountStr = planPrices[planId];
-    if (!amountStr) {
-      throw new functions.https.HttpsError('invalid-argument', 'Plan no válido.');
+
+    const REDSYS_SECRET_KEY = getRedsysSecret();
+
+    const planPrices: Record<string, string> = {
+      standard: '2178',
+      premium: '3630',
+      enterprise: '0'
+    };
+
+    let amountStr: string;
+
+    if (planId === 'store') {
+      if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        res.status(400).json({ error: 'Importe no válido para pedido de tienda.' });
+        return;
+      }
+      amountStr = Math.round(Number(amount) * 100).toString();
+    } else {
+      amountStr = planPrices[planId];
+      if (!amountStr) {
+        res.status(400).json({ error: 'Plan no válido.' });
+        return;
+      }
     }
+
+    const order = generateSafeOrder();
+
+    const params = {
+      Ds_Merchant_MerchantCode: "369433412",
+      Ds_Merchant_Terminal: "1",
+      Ds_Merchant_Currency: "978",
+      Ds_Merchant_TransactionType: "0",
+      Ds_Merchant_Amount: amountStr,
+      Ds_Merchant_Order: order,
+      Ds_Merchant_MerchantURL: "https://redsysnotification-xdvnwns5xq-uc.a.run.app",
+      Ds_Merchant_UrlOK: "https://mitarjetaprofesional.es/dashboard?payment=success",
+      Ds_Merchant_UrlKO: "https://mitarjetaprofesional.es/pricing?payment=cancelled",
+      Ds_Merchant_MerchantName: "Mi Tarjeta Profesional"
+    };
+
+    const Ds_MerchantParameters = Buffer.from(JSON.stringify(params)).toString('base64');
+    const orderKey = getOrderKey(order, REDSYS_SECRET_KEY);
+    const Ds_Signature = crypto.createHmac('sha256', orderKey).update(Ds_MerchantParameters).digest('base64');
+
+    await db.collection('transactions').doc(order).set({
+      transactionId: order,
+      uid,
+      plan: planId,
+      amount: parseInt(amountStr, 10),
+      status: 'PENDING',
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now()
+    });
+
+    res.status(200).json({
+      Ds_SignatureVersion: "HMAC_SHA256_V1",
+      Ds_MerchantParameters,
+      Ds_Signature,
+      redsysUrl: "https://sis-t.redsys.es:25443/sis/realizarPago"
+    });
+
+  } catch (error: any) {
+    console.error('Error en createRedsysPayment:', error);
+    res.status(500).json({ error: error.message || 'Error interno' });
   }
-
-  const order = generateSafeOrder();
-
-  const params = {
-    Ds_Merchant_MerchantCode: "369433412",
-    Ds_Merchant_Terminal: "1",
-    Ds_Merchant_Currency: "978",
-    Ds_Merchant_TransactionType: "0",
-    Ds_Merchant_Amount: amountStr,
-    Ds_Merchant_Order: order,
-    Ds_Merchant_MerchantURL: "https://redsysnotification-xdvnwns5xq-uc.a.run.app",
-    Ds_Merchant_UrlOK: "https://mitarjetaprofesional.es/dashboard?payment=success",
-    Ds_Merchant_UrlKO: "https://mitarjetaprofesional.es/pricing?payment=cancelled",
-    Ds_Merchant_MerchantName: "Mi Tarjeta Profesional"
-  };
-
-  const Ds_MerchantParameters = Buffer.from(JSON.stringify(params)).toString('base64');
-  const orderKey = getOrderKey(order, REDSYS_SECRET_KEY);
-  const Ds_Signature = crypto.createHmac('sha256', orderKey).update(Ds_MerchantParameters).digest('base64');
-
-  await db.collection('transactions').doc(order).set({
-    transactionId: order,
-    uid: uid,
-    plan: planId,
-    amount: parseInt(amountStr, 10),
-    status: 'PENDING',
-    createdAt: admin.firestore.Timestamp.now(),
-    updatedAt: admin.firestore.Timestamp.now()
-  });
-
-  return {
-    Ds_SignatureVersion: "HMAC_SHA256_V1",
-    Ds_MerchantParameters,
-    Ds_Signature,
-    redsysUrl: "https://sis-t.redsys.es:25443/sis/realizarPago"
-  };
 });
 
 export const redsysNotification = functions.https.onRequest(async (req, res) => {

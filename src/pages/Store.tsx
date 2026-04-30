@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { db, storage, app } from '../firebase';
 import { collection, query, where, getDocs, doc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { ShoppingBag, Upload, CreditCard, CheckCircle2, ArrowLeft, Palette, Smartphone, Tag, ChevronDown, ChevronUp, Download, FileText } from 'lucide-react';
 import CardTemplate from '../components/CardTemplate';
 import Logo from '../components/Logo';
@@ -276,41 +275,38 @@ export default function Store() {
         createdAt: serverTimestamp()
       });
       
-      const functions = getFunctions(app);
-      const createRedsysPayment = httpsCallable(functions, 'createRedsysPayment');
-      
-      const { data } = await createRedsysPayment({ 
-        planId: 'store',
-        uid: user.uid,
-        orderId,
-        amount: selectedProduct.price
-      }) as { data: { Ds_SignatureVersion: string, Ds_MerchantParameters: string, Ds_Signature: string, redsysUrl: string } };
+      const priceKey = selectedProduct.optionId || selectedProduct.id || 'store_custom';
 
-      const { Ds_SignatureVersion, Ds_MerchantParameters, Ds_Signature, redsysUrl } = data;
+      const response = await fetch(
+        'https://us-central1-gen-lang-client-0045627709.cloudfunctions.net/createStripeCheckout',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            priceKey,
+            uid: user.uid,
+            orderId,
+            amount: selectedProduct.price
+          })
+        }
+      );
 
-      if (!Ds_SignatureVersion || !Ds_MerchantParameters || !Ds_Signature || !redsysUrl) {
-        throw new Error('Respuesta incompleta de Redsys. Inténtalo de nuevo.');
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Error al iniciar el pago: ${errText}`);
       }
 
-      const html = `
-        <html>
-          <body>
-            <form id="redsysForm" method="POST" action="${redsysUrl}">
-              <input type="hidden" name="Ds_SignatureVersion" value="${Ds_SignatureVersion}"/>
-              <input type="hidden" name="Ds_MerchantParameters" value="${Ds_MerchantParameters}"/>
-              <input type="hidden" name="Ds_Signature" value="${Ds_Signature}"/>
-            </form>
-            <script>document.getElementById('redsysForm').submit();</script>
-          </body>
-        </html>
-      `;
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
+      const { url } = await response.json();
+
+      if (!url) {
+        throw new Error('No se recibió URL de pago. Inténtalo de nuevo.');
+      }
+
       window.location.href = url;
 
     } catch (error) {
       console.error("Error placing order:", error);
-      alert(error instanceof Error ? error.message : "Error al procesar el pago con Redsys");
+      alert(error instanceof Error ? error.message : "Error al procesar el pago");
       setIsSubmitting(false);
     }
   };
@@ -973,11 +969,11 @@ export default function Store() {
                         {isSubmitting ? 'Procesando...' : 'Pagar con tarjeta'}
                       </button>
                       <button
-                        onClick={() => handleCheckout('bizum')}
+                        onClick={() => handleCheckout('card')}
                         disabled={isSubmitting}
                         className="w-full py-4 bg-white border-2 border-zinc-200 text-zinc-900 rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-zinc-50 transition-colors disabled:opacity-50"
                       >
-                        {isSubmitting ? 'Procesando...' : 'Pagar con Bizum'}
+                        {isSubmitting ? 'Procesando...' : 'Pagar con Stripe'}
                       </button>
                     </div>
 

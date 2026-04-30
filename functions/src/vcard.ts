@@ -10,7 +10,7 @@ const db = new Firestore({
   databaseId: 'ai-studio-e8573a2d-567c-4bb1-9792-86cac6762b15'
 });
 
-export const getVCard = functions.runWith({ invoker: 'public' }).https.onRequest(async (req, res) => {
+export const getVCard = functions.https.onRequest(async (req, res) => {
   const cardId = req.path.replace('/', '').trim();
 
   if (!cardId) {
@@ -64,3 +64,17 @@ h2{color:#18181b;margin-bottom:.5rem;}p{color:#71717a;}</style>
                        address?.province || address?.zip || address?.country;
     if (hasAddress) {
       lines.push(`ADR;TYPE=WORK:;;${address.street || ''};${address.city || ''};${address.province || ''};${address.zip || ''};${address.country || ''}`);
+    }
+
+    lines.push('END:VCARD');
+
+    const vcardString = lines.join('\n');
+
+    res.set('Content-Type', 'text/vcard; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${identity.firstName || 'contacto'}.vcf"`);
+    res.status(200).send(vcardString);
+  } catch (error) {
+    console.error('Error generando VCard:', error);
+    res.status(500).send('Error interno del servidor');
+  }
+});

@@ -3,12 +3,10 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Desregistrar Service Workers para evitar interferencias con descargas
+// Registrar Service Worker con excepción para cloudfunctions
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-    }
+  navigator.serviceWorker.register('/service-worker.js').catch(error => {
+    console.error('Service Worker registration failed:', error);
   });
 }
 
